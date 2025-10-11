@@ -1,0 +1,54 @@
+import dotenv from 'dotenv';
+
+// Загрузка переменных окружения
+dotenv.config();
+
+/**
+ * Конфигурация приложения
+ */
+export const config = {
+    // Telegram API
+    telegram: {
+        apiId: parseInt(process.env.API_ID),
+        apiHash: process.env.API_HASH,
+        phoneNumber: process.env.PHONE_NUMBER,
+        sessionString: process.env.SESSION_STRING || '',
+    },
+
+    // Настройки группы
+    group: {
+        chatId: process.env.GROUP_CHAT_ID,
+    },
+
+    // Настройки админа
+    admin: {
+        userId: process.env.ADMIN_ID || null,
+    },
+
+    // Опции клиента
+    client: {
+        connectionRetries: 5,
+    },
+
+    // Пути к файлам
+    paths: {
+        logs: './logs',
+        data: './data',
+        backups: './backups',
+    },
+
+    // Проверка наличия обязательных переменных
+    validate() {
+        const { apiId, apiHash, phoneNumber } = this.telegram;
+        const { chatId } = this.group;
+
+        if (!apiId || !apiHash || !phoneNumber || !chatId) {
+            throw new Error(
+                'Не все обязательные переменные окружения установлены! Проверьте .env файл.'
+            );
+        }
+
+        return true;
+    },
+};
+

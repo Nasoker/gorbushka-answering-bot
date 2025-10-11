@@ -1,0 +1,25 @@
+{
+  "name": "gorbushka-answering-bot",
+  "version": "2.0.0",
+  "description": "Telegram user bot для мониторинга сообщений в группе (ООП архитектура)",
+  "main": "bot.js",
+  "type": "module",
+  "scripts": {
+    "start": "node bot.js",
+    "dev": "node --watch bot.js",
+    "test-parser": "node scripts/test-parser.js"
+  },
+  "keywords": [
+    "telegram",
+    "bot",
+    "monitoring"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "better-sqlite3": "^9.6.0",
+    "dotenv": "^16.4.5",
+    "input": "^1.0.1",
+    "telegram": "^2.25.15"
+  }
+}
