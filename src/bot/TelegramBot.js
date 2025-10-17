@@ -53,24 +53,23 @@ export class TelegramBot {
         let chat = null;
         let sender = null;
 
-        console.log(message)
-        // Получение чата
-        if (message.peerId) {
-            try {
-                chat = await this.client.getEntity(message.peerId);
-            } catch (e) {
-                chat = { title: 'Неизвестная группа', id: message.peerId };
+            // Получение чата
+            if (message.peerId) {
+                try {
+                    chat = await this.client.getEntity(message.peerId);
+                } catch (e) {
+                    chat = { title: 'Неизвестная группа', id: message.peerId };
+                }
             }
-        }
 
-        // Получение отправителя
-        if (message.senderId) {
-            try {
-                sender = await this.client.getEntity(message.senderId);
-            } catch (e) {
-                // Игнорируем ошибку
+            // Получение отправителя
+            if (message.senderId) {
+                try {
+                    sender = await this.client.getEntity(message.senderId);
+                } catch (e) {
+                    // Игнорируем ошибку
+                }
             }
-        }
 
         return { chat, sender };
     }

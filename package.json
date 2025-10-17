@@ -17,7 +17,6 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "better-sqlite3": "^9.6.0",
     "dotenv": "^16.4.5",
     "input": "^1.0.1",
     "telegram": "^2.25.15"

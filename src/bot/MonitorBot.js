@@ -1,5 +1,4 @@
 import { TelegramBot } from './TelegramBot.js';
-import { ProductHandler } from '../handlers/productHandler.js';
 import input from 'input';
 
 /**
@@ -9,7 +8,6 @@ export class MonitorBot extends TelegramBot {
     constructor(options = {}) {
         super(options);
         this.messageHandler = options.messageHandler || this.defaultMessageHandler.bind(this);
-        this.productHandler = new ProductHandler(this);
     }
 
     /**
@@ -18,12 +16,14 @@ export class MonitorBot extends TelegramBot {
     async defaultMessageHandler(event) {
         try {
             const message = event.message;
-            await this.getMessageInfo(message);
-            
-            console.log(`└─ Текст: ${message.text || '[медиа или другой тип сообщения]'}`);
+            const { chat, sender } = await this.getMessageInfo(message);
 
-            // Обрабатываем товары в сообщении
-            await this.productHandler.handleMessage(event);
+            console.log('\n📨 Новое сообщение:');
+            console.log(`├─ Группа: ${chat?.title || chat?.username || 'Неизвестно'}`);
+            console.log(`├─ Отправитель: ${sender?.firstName || ''} ${sender?.lastName || ''} (@${sender?.username || 'без username'})`);
+            console.log(`├─ ID отправителя: ${message.senderId || 'Неизвестно'}`);
+            console.log(`├─ Время: ${new Date(message.date * 1000).toLocaleString('ru-RU')}`);
+            console.log(`└─ Текст: ${message.text || '[медиа или другой тип сообщения]'}`);
 
         } catch (error) {
             console.error('❌ Ошибка обработки сообщения:', error.message);
@@ -67,14 +67,5 @@ export class MonitorBot extends TelegramBot {
         }
     }
 
-    /**
-     * Отключение с закрытием БД
-     */
-    async disconnect() {
-        if (this.productHandler) {
-            this.productHandler.close();
-        }
-        await super.disconnect();
-    }
 }
 
