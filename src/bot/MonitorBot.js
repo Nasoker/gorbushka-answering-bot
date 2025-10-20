@@ -17,17 +17,6 @@ export class MonitorBot extends TelegramBot {
      */
     async defaultMessageHandler(event) {
         try {
-            const message = event.message;
-            const { chat, sender } = await this.getMessageInfo(message);
-
-            console.log('\n📨 Новое сообщение:');
-            console.log(`├─ Группа: ${chat?.title || chat?.username || 'Неизвестно'}`);
-            console.log(`├─ Отправитель: ${sender?.firstName || ''} ${sender?.lastName || ''} (@${sender?.username || 'без username'})`);
-            console.log(`├─ ID отправителя: ${message.senderId || 'Неизвестно'}`);
-            console.log(`├─ Время: ${new Date(message.date * 1000).toLocaleString('ru-RU')}`);
-            console.log(`└─ Текст: ${message.text || '[медиа или другой тип сообщения]'}`);
-
-            // Обрабатываем поиск в Google Sheets
             await this.searchHandler.handleMessage(event);
 
         } catch (error) {

@@ -12,14 +12,14 @@ const bot = new MonitorBot({ config });
 
 // Обработка завершения работы
 process.on('SIGINT', async () => {
-  console.log('\n\n👋 Завершение работы...');
-  await bot.disconnect();
-  process.exit(0);
+    console.log('\n\n👋 Завершение работы...');
+    await bot.disconnect();
+    process.exit(0);
 });
 
 // Запуск
 bot.start().catch((error) => {
-  console.error('❌ Критическая ошибка:', error);
-  process.exit(1);
+    console.error('❌ Критическая ошибка:', error);
+    process.exit(1);
 });
 

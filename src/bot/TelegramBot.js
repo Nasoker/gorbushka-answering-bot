@@ -47,31 +47,20 @@ export class TelegramBot {
     }
 
     /**
-     * Получение информации о сообщении
+     * Получение информации о сообщении из события
+     * В GramJS sender уже доступен в event
      */
-    async getMessageInfo(message) {
-        let chat = null;
-        let sender = null;
+    getMessageInfo(event) {
+        const message = event.message;
+        const sender = event.sender; // Отправитель уже есть в event
+        const chat = event.chat; // Чат тоже есть в event
 
-            // Получение чата
-            if (message.peerId) {
-                try {
-                    chat = await this.client.getEntity(message.peerId);
-                } catch (e) {
-                    chat = { title: 'Неизвестная группа', id: message.peerId };
-                }
-            }
-
-            // Получение отправителя
-            if (message.senderId) {
-                try {
-                    sender = await this.client.getEntity(message.senderId);
-                } catch (e) {
-                    // Игнорируем ошибку
-                }
-            }
-
-        return { chat, sender };
+        return { 
+            message,
+            chat, 
+            sender,
+            senderId: message?.senderId
+        };
     }
 
     /**
@@ -100,6 +89,115 @@ export class TelegramBot {
         } catch (error) {
             console.error('❌ Не удалось получить информацию о пользователе:', error.message);
             return null;
+        }
+    }
+
+    /**
+     * Получение участников чата
+     * @param {string|number} chatId - ID чата или username
+     * @param {number} limit - Максимальное количество участников (по умолчанию 100)
+     */
+    async getChatParticipants(chatId, limit = 100) {
+        try {
+            console.log(`🔍 Получение участников чата ${chatId}...`);
+            const participants = await this.client.getParticipants(chatId, { limit });
+            console.log(`✅ Найдено участников: ${participants.length}`);
+            return participants;
+        } catch (error) {
+            console.error('❌ Ошибка получения участников чата:', error.message);
+            return [];
+        }
+    }
+
+    /**
+     * Поиск участника чата по ID
+     * @param {string|number} chatId - ID чата
+     * @param {number|BigInt} userId - ID пользователя для поиска
+     */
+    async findParticipantById(chatId, userId) {
+        try {
+            const participants = await this.getChatParticipants(chatId);
+            
+            console.log(`🔍 Ищем участника с ID: ${userId} (тип: ${typeof userId})`);
+            
+            // Преобразуем BigInt в строку для надёжного сравнения
+            const targetIdStr = userId.toString();
+            
+            const participant = participants.find(p => {
+                // Получаем ID участника, обрабатывая разные форматы
+                let pId = p.id;
+                
+                // Если это объект Integer с value
+                if (pId && typeof pId === 'object' && 'value' in pId) {
+                    pId = pId.value;
+                }
+                
+                // Преобразуем в строку для сравнения
+                const pIdStr = pId.toString();
+                
+                const match = pIdStr === targetIdStr;
+                if (match) {
+                    console.log(`✅ Найдено совпадение: ${pIdStr} === ${targetIdStr}`);
+                }
+                
+                return match;
+            });
+            
+            if (participant) {
+                // Извлекаем чистый ID
+                let cleanId = participant.id;
+                if (cleanId && typeof cleanId === 'object' && 'value' in cleanId) {
+                    cleanId = cleanId.value;
+                }
+                
+                const displayName = participant.username || participant.firstName || `ID:${cleanId}`;
+                console.log(`✅ Участник найден: @${displayName}`);
+                
+                return {
+                    id: cleanId,
+                    username: participant.username,
+                    firstName: participant.firstName,
+                    lastName: participant.lastName,
+                    phone: participant.phone,
+                    bot: participant.bot
+                };
+            }
+            
+            console.log(`⚠️ Участник с ID ${userId} не найден среди ${participants.length} участников`);
+            return null;
+        } catch (error) {
+            console.error('❌ Ошибка поиска участника:', error.message);
+            return null;
+        }
+    }
+
+    /**
+     * Отправка личного сообщения пользователю (в ЛС, не в чат)
+     * @param {number|string|Object} userId - ID пользователя
+     * @param {string} messageText - Текст сообщения
+     */
+    async sendPrivateMessage(userId, messageText) {
+        try {
+            await this.client.sendMessage(userId, { 
+                message: messageText 
+            });
+        } catch (error) {
+            console.error('❌ Ошибка отправки личного сообщения::', error);
+        }
+    }
+
+    /**
+     * Отправка сообщения в чат
+     * @param {string|number} chatId - ID чата
+     * @param {string} message - Текст сообщения
+     */
+    async sendMessage(chatId, message) {
+        try {
+            await this.client.sendMessage(chatId, { message });
+            return true;
+        } catch (error) {
+            console.error(`❌ Ошибка отправки сообщения в чат ${chatId}:`, error.message);
+            return false;
         }
     }
 

@@ -20,29 +20,30 @@ export const config = {
         chatId: process.env.GROUP_CHAT_ID,
     },
 
-  // Настройки админа
-  admin: {
-    userId: process.env.ADMIN_ID || null,
-  },
+    // Настройки админа
+    admin: {
+        userId: process.env.ADMIN_ID || null,
+    },
 
-  // Google Sheets
-  googleSheets: {
-    spreadsheetId: process.env.GOOGLE_SHEET_ID,
-    credentialsPath: process.env.GOOGLE_CREDENTIALS_PATH || './credentials.json',
-    sheetName: process.env.GOOGLE_SHEET_NAME || 'Sheet1',
-  },
+    // Google Sheets
+    googleSheets: {
+        spreadsheetId: process.env.GOOGLE_SHEET_ID,
+        credentialsPath: process.env.GOOGLE_CREDENTIALS_PATH || './credentials.json',
+        sheetGid: process.env.GOOGLE_SHEET_GID, // ID листа (например: 1815081042)
+        sheetName: process.env.GOOGLE_SHEET_NAME, // Опционально: имя листа
+    },
 
-  // Опции клиента
-  client: {
-    connectionRetries: 5,
-  },
+    // Опции клиента
+    client: {
+        connectionRetries: 5,
+    },
 
-  // Пути к файлам
-  paths: {
-    logs: './logs',
-    data: './data',
-    backups: './backups',
-  },
+    // Пути к файлам
+    paths: {
+        logs: './logs',
+        data: './data',
+        backups: './backups',
+    },
 
     // Проверка наличия обязательных переменных
     validate() {
