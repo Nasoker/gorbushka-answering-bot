@@ -99,9 +99,7 @@ export class TelegramBot {
      */
     async getChatParticipants(chatId, limit = 100) {
         try {
-            console.log(`🔍 Получение участников чата ${chatId}...`);
             const participants = await this.client.getParticipants(chatId, { limit });
-            console.log(`✅ Найдено участников: ${participants.length}`);
             return participants;
         } catch (error) {
             console.error('❌ Ошибка получения участников чата:', error.message);
@@ -117,8 +115,6 @@ export class TelegramBot {
     async findParticipantById(chatId, userId) {
         try {
             const participants = await this.getChatParticipants(chatId);
-            
-            console.log(`🔍 Ищем участника с ID: ${userId} (тип: ${typeof userId})`);
             
             // Преобразуем BigInt в строку для надёжного сравнения
             const targetIdStr = userId.toString();
@@ -136,9 +132,6 @@ export class TelegramBot {
                 const pIdStr = pId.toString();
                 
                 const match = pIdStr === targetIdStr;
-                if (match) {
-                    console.log(`✅ Найдено совпадение: ${pIdStr} === ${targetIdStr}`);
-                }
                 
                 return match;
             });
@@ -146,12 +139,10 @@ export class TelegramBot {
             if (participant) {
                 // Извлекаем чистый ID
                 let cleanId = participant.id;
+
                 if (cleanId && typeof cleanId === 'object' && 'value' in cleanId) {
                     cleanId = cleanId.value;
                 }
-                
-                const displayName = participant.username || participant.firstName || `ID:${cleanId}`;
-                console.log(`✅ Участник найден: @${displayName}`);
                 
                 return {
                     id: cleanId,
@@ -162,8 +153,7 @@ export class TelegramBot {
                     bot: participant.bot
                 };
             }
-            
-            console.log(`⚠️ Участник с ID ${userId} не найден среди ${participants.length} участников`);
+
             return null;
         } catch (error) {
             console.error('❌ Ошибка поиска участника:', error.message);
@@ -183,21 +173,6 @@ export class TelegramBot {
             });
         } catch (error) {
             console.error('❌ Ошибка отправки личного сообщения::', error);
-        }
-    }
-
-    /**
-     * Отправка сообщения в чат
-     * @param {string|number} chatId - ID чата
-     * @param {string} message - Текст сообщения
-     */
-    async sendMessage(chatId, message) {
-        try {
-            await this.client.sendMessage(chatId, { message });
-            return true;
-        } catch (error) {
-            console.error(`❌ Ошибка отправки сообщения в чат ${chatId}:`, error.message);
-            return false;
         }
     }
 

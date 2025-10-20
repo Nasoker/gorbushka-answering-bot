@@ -33,6 +33,12 @@ export const config = {
         sheetName: process.env.GOOGLE_SHEET_NAME, // Опционально: имя листа
     },
 
+    // AIML API
+    aimlapi: {
+        apiKey: process.env.AIMLAPI_KEY,
+        baseUrl: 'https://api.aimlapi.com/v1',
+    },
+
     // Опции клиента
     client: {
         connectionRetries: 5,
