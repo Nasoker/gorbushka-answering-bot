@@ -102,8 +102,6 @@ export class GoogleSheetsService {
                 console.log('⚠️ Таблица пуста');
                 return [];
             }
-
-            console.log(`📊 Загружено ${rows.length} строк из таблицы`);
             return rows;
         } catch (error) {
             console.error('❌ Ошибка получения данных:', error.message);
