@@ -30,13 +30,11 @@ export class SearchHandler {
         try {
             const message = event.message;
 
-            // Пропускаем сообщения от самого бота
             const me = await this.bot.getUser();
             if (message.senderId === me?.id) {
                 return;
             }
 
-            // Пропускаем пустые сообщения
             if (!message.text || message.text.trim().length === 0) {
                 return;
             }
@@ -46,18 +44,22 @@ export class SearchHandler {
            
             if (!sender) return;
 
-            console.log(`🔄 Сообщение от пользователя: ${sender.username} сообщение: ${message.text}`);
-
+            console.log(`📤 Отправляем в AIML API: "${message.text}"`);
             const response = await this.aimlService.sendMessage(message.text);
 
             if (response.success && response.products && Array.isArray(response.products)) {
                 
-                if (response.products.length === 0) return
+                if (response.products.length === 0) {
+                    console.log(`⚠️ AIML API вернул пустой массив для сообщения: "${message.text}"`);
+                    return;
+                }
 
                 const productsWithPrices = await this.searchProductsWithPrices(response.products);
+                console.log(productsWithPrices);
                 
                 // Фильтруем только найденные товары
                 const foundProducts = productsWithPrices.products.filter(p => p.found);
+                console.log(foundProducts)
                 
                 if (foundProducts.length > 0) {
                     // Проверяем, есть ли товары с ценами
@@ -71,6 +73,12 @@ export class SearchHandler {
                     // Форматируем сообщение с сохранением исходного порядка
                     const replyMessage = this.formatMessageWithPrices(message.text, productsWithPrices.products);
 
+                    // Проверяем, что сообщение не пустое
+                    if (!replyMessage || replyMessage.trim() === '') {
+                        console.log(`⚠️ Сформированное сообщение пустое. Пропускаем отправку.`);
+                        return;
+                    }
+
                     // Вычисляем задержку: 5-7 секунд на каждый товар
                     const delayPerProduct = this.getRandomDelay(5000, 7000); 
                     const totalDelay = delayPerProduct * productsWithValidPrices.length;
@@ -79,6 +87,7 @@ export class SearchHandler {
                         console.log(`⚠️ Не найдены товары: ${productsWithPrices.notFound.join(', ')}`);
                     }
                     console.log(`🔄 Задержка: ${totalDelay} мс для ${productsWithValidPrices.length} товаров. Отправка сообщения для пользователя: ${sender.username}`);
+                    console.log(`📝 Сформированное сообщение: "${replyMessage}"`);
                     
                     await this.delay(totalDelay);
                     await this.bot.sendPrivateMessage(sender.username, replyMessage);
@@ -250,9 +259,8 @@ export class SearchHandler {
         for (const line of lines) {
             const trimmedLine = line.trim();
             
-            // Если строка пустая - сохраняем как есть
+            // Если строка пустая - пропускаем
             if (trimmedLine === '') {
-                resultLines.push('');
                 continue;
             }
             
@@ -264,32 +272,6 @@ export class SearchHandler {
             } else {
                 // Если точного совпадения нет, ищем по частичному совпадению (убираем лишние символы)
                 let cleanLine = trimmedLine;
-                
-                // Убираем префиксы (Куплю, Продаю и т.д.)
-                cleanLine = cleanLine.replace(/^(куплю|продаю|ищу|нужен|нужна|нужно)\s+/i, '');
-                
-                // Убираем различные суффиксы и числа
-                cleanLine = cleanLine.replace(/\s*\?\?\?\s*$/, ''); // убираем "???"
-                cleanLine = cleanLine.replace(/\s*-\s*\d+\s*шт\s*$/, ''); // убираем "- число шт" в конце
-                cleanLine = cleanLine.replace(/\s*-\s*\d+\s*$/, ''); // убираем "- число" в конце
-                cleanLine = cleanLine.replace(/\s*-\s*$/, ''); // убираем "-" в конце
-                cleanLine = cleanLine.replace(/\s*\.\s*$/, ''); // убираем "." в конце
-                
-                // Убираем числа в разных позициях (например "white-5" -> "white")
-                cleanLine = cleanLine.replace(/-\d+\s*/, ' '); // убираем "-число" в середине
-                cleanLine = cleanLine.replace(/\s+\d+\s*$/, ''); // убираем " число" в конце
-                
-                // Убираем флаги стран и другие эмодзи
-                cleanLine = cleanLine.replace(/[\u{1F1E6}-\u{1F1FF}]{2}/gu, ''); // убираем флаги стран
-                cleanLine = cleanLine.replace(/[\u{1F600}-\u{1F64F}]/gu, ''); // убираем эмодзи лиц
-                cleanLine = cleanLine.replace(/[\u{1F300}-\u{1F5FF}]/gu, ''); // убираем другие эмодзи
-                cleanLine = cleanLine.replace(/[\u{1F680}-\u{1F6FF}]/gu, ''); // убираем транспортные эмодзи
-                cleanLine = cleanLine.replace(/[\u{1F700}-\u{1F77F}]/gu, ''); // убираем алхимические эмодзи
-                cleanLine = cleanLine.replace(/[\u{1F780}-\u{1F7FF}]/gu, ''); // убираем геометрические эмодзи
-                cleanLine = cleanLine.replace(/[\u{1F800}-\u{1F8FF}]/gu, ''); // убираем дополнительные эмодзи
-                cleanLine = cleanLine.replace(/[\u{1F900}-\u{1F9FF}]/gu, ''); // убираем дополнительные символы
-                cleanLine = cleanLine.replace(/[\u{1FA00}-\u{1FA6F}]/gu, ''); // убираем шахматные символы
-                cleanLine = cleanLine.replace(/[\u{1FA70}-\u{1FAFF}]/gu, ''); // убираем дополнительные символы
                 
                 cleanLine = cleanLine.replace(/\s+/g, ' '); // убираем лишние пробелы
                 cleanLine = cleanLine.trim();
@@ -304,12 +286,12 @@ export class SearchHandler {
                 }
             }
             
-            if (product && product.found && product.price) {
-                // Товар найден - добавляем цену
+            if (product && product.found && product.price && product.price !== 'нет цены' && product.price.trim() !== '') {
+                // Товар найден с валидной ценой - добавляем цену
                 console.log(`✅ Добавляем цену для "${trimmedLine}": "${product.price}"`);
                 resultLines.push(`${trimmedLine} ${product.price}`);
             } else {
-                // Строка как есть (заголовок, не найденный товар или старая модель)
+                // Товар не найден или без цены - НЕ добавляем в результат
                 if (product) {
                     console.log(`⚠️ Товар найден, но без цены: "${trimmedLine}", found: ${product.found}, price: "${product.price}"`);
                 } else {
