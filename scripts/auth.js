@@ -27,10 +27,19 @@ async function saveSession() {
             phoneNumber: async () => phoneNumber,
             password: async () => {
                 const password = await input.text('Введите пароль 2FA (если включен, иначе нажмите ENTER): ');
-                return password.trim() === '' ? undefined : password;
+                if (password.trim() === '') {
+                    throw new Error('NO_PASSWORD'); // Специальная ошибка для отсутствия пароля
+                }
+                return password;
             },
             phoneCode: async () => await input.text('Введите код из Telegram: '),
-            onError: (err) => console.error('❌ Ошибка:', err),
+            onError: (err) => {
+                if (err.message === 'NO_PASSWORD') {
+                    console.log('ℹ️ 2FA не включен, продолжаем без пароля...');
+                    return; // Игнорируем ошибку отсутствия пароля
+                }
+                console.error('❌ Ошибка:', err);
+            },
         });
 
         console.log('\n✅ Успешная авторизация!');
