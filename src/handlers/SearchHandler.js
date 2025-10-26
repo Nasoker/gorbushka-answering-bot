@@ -42,7 +42,7 @@ export class SearchHandler {
             
             const senderId = message.fromId?.userId?.value || message.senderId;
             const sender = await this.bot.findParticipantById(this.config.group.chatId, senderId);
-           
+            /*            
             if (!sender) return;
 
             console.log(`📤 Отправляем в AIML API: "${message.text}"`);
@@ -86,7 +86,8 @@ export class SearchHandler {
                 await this.bot.sendPrivateMessage(sender.username, replyMessage);
             } else {
                 console.error(`❌ Ошибка получения ответа от AIML API: ${response.error}`);
-            }
+            } */
+           console.log(sender);
 
         } catch (error) {
             console.error('❌ Ошибка в SearchHandler:', error);
