@@ -25,7 +25,10 @@ async function saveSession() {
 
         await client.start({
             phoneNumber: async () => phoneNumber,
-            password: async () => await input.text('Введите пароль 2FA (если включен): '),
+            password: async () => {
+                const password = await input.text('Введите пароль 2FA (если включен, иначе нажмите ENTER): ');
+                return password.trim() === '' ? undefined : password;
+            },
             phoneCode: async () => await input.text('Введите код из Telegram: '),
             onError: (err) => console.error('❌ Ошибка:', err),
         });
