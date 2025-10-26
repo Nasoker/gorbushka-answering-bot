@@ -72,6 +72,11 @@ export class AimlApiService {
    iPhone 17 Pro/Pro Max: Cosmic Orange, Deep Blue, Silver
    iPhone Air: Cloud White, Light Gold, Sky Blue, Space Black
    
+   ОСОБЫЕ ПРАВИЛА ДЛЯ iPhone 17 Pro/Pro Max:
+   - Все варианты белого/серебристого → Silver:
+     * "сильвер", "silver", "белый", "white", "сильвер белый", "silver white"
+     * "серебристый", "серебро", "серебряный"
+   
    Если цвет не найден → используй похожий (orange → Cosmic Orange)
 
 4. SIM: 1Sim, 2Sim, eSim (если не указано → 1Sim, для Air → eSim)
@@ -81,6 +86,10 @@ export class AimlApiService {
 "Куплю 17 256 синий" → [{"original": "Куплю 17 256 синий", "normalized": "iPhone 17 256 Mist Blue 1Sim"}]
 "17 про 512 orange" → [{"original": "17 про 512 orange", "normalized": "iPhone 17 Pro 512 Cosmic Orange 1Sim"}]
 "13) Куплю 17 pro 512gb Orange 1 sim Европа ? ответил без цены" → [{"original": "13) Куплю 17 pro 512gb Orange 1 sim Европа ? ответил без цены", "normalized": "iPhone 17 Pro 512 Cosmic Orange 1Sim"}]
+
+ПРИМЕРЫ ЦВЕТОВ ДЛЯ iPhone 17 Pro/Pro Max:
+"17 pro 256 белый" → [{"original": "17 pro 256 белый", "normalized": "iPhone 17 Pro 256 Silver 1Sim"}]
+"17 pro max 512 white" → [{"original": "17 pro max 512 white", "normalized": "iPhone 17 Pro Max 512 Silver 1Sim"}]
 
 МНОГОСТРОЧНЫЕ СООБЩЕНИЯ:
 "КУПЛЮ\n\n17 Pro 256 silver sim - 1шт" → [{"original": "КУПЛЮ", "normalized": ""}, {"original": "17 Pro 256 silver sim - 1шт", "normalized": "iPhone 17 Pro 256 Silver 1Sim"}]
