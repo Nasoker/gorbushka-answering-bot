@@ -4,3 +4,5 @@ node_modules/
 *.session-journal
 .DS_Store
 
+credentials.json
+
