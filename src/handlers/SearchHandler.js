@@ -29,6 +29,7 @@ export class SearchHandler {
     async handleMessage(event) {
         try {
             const message = event.message;
+            console.log(`📤 Сообщение: "${message.text}"`);
 
             const me = await this.bot.getUser();
             if (message.senderId === me?.id) {
@@ -55,7 +56,12 @@ export class SearchHandler {
                 }
 
                 const productsWithPrices = await this.searchProductsWithPrices(response.products);
-                console.log(productsWithPrices);
+                const productsWithValidPrices = productsWithPrices.products.filter(p => p.price != null);
+                
+                if (productsWithValidPrices.length === 0) {
+                    console.log(`⚠️ Нет товаров с ценами. Пропускаем отправку.`);
+                    return;
+                }
                 
                 // Форматируем сообщение с сохранением исходного порядка
                 const replyMessage = this.formatMessageWithPrices(message.text, productsWithPrices.products);
@@ -67,8 +73,7 @@ export class SearchHandler {
                 }
 
                 // Вычисляем задержку: 5-7 секунд на каждый товар с ценой
-                const productsWithValidPrices = productsWithPrices.products.filter(p => p.found && p.price && p.price !== 'нет цены' && p.price.trim() !== '');
-                const delayPerProduct = this.getRandomDelay(5000, 7000); 
+                const delayPerProduct = this.getRandomDelay(5000, 7000);
                 const totalDelay = delayPerProduct * productsWithValidPrices.length;
                 
                 if (productsWithPrices.notFound.length > 0) {

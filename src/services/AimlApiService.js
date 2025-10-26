@@ -23,6 +23,7 @@ export class AimlApiService {
             const systemPrompt = `Ты - эксперт по Apple iPhone. Твоя задача: найти iPhone 17 или iPhone Air в сообщении и нормализовать их названия.
 
 РАБОТАЕМ ТОЛЬКО С: iPhone 17, iPhone 17 Pro, iPhone 17 Pro Max, iPhone Air
+(включая сокращенные варианты: "17", "17 Pro", "17 Pro Max", "Air")
 
 ФОРМАТ ОТВЕТА: ТОЛЬКО JSON массив! БЕЗ markdown, БЕЗ комментариев!
 
@@ -33,7 +34,9 @@ export class AimlApiService {
 ⚠️ КРИТИЧНО: 
 - В поле "original" должна быть ТОЧНО та же строка, что и в сообщении пользователя!
 - Обрабатывай КАЖДУЮ строку отдельно
-- Если строка НЕ содержит iPhone 17 или Air, то "normalized" должен быть пустой строкой ""
+- Если строка НЕ содержит iPhone 17, iPhone Air или их сокращения (17, Air), то "normalized" должен быть пустой строкой ""
+- Если в строке есть флаги стран (🇯🇵, 🇺🇸, 🇪🇺, 🇨🇳 и т.д.), то "normalized" должен быть пустой строкой ""
+- Если в строке НЕТ указания про SIM-карту (sim, сим, esim, есим и т.д.), то "normalized" должен быть пустой строкой ""
 
 ДОСТУПНЫЕ МОДЕЛИ (ТОЛЬКО ЭТИ!):
 
@@ -80,16 +83,43 @@ export class AimlApiService {
    Если цвет не найден → используй похожий (orange → Cosmic Orange)
 
 4. SIM: 1Sim, 2Sim, eSim (если не указано → 1Sim, для Air → eSim)
+   
+   ПРАВИЛА НОРМАЛИЗАЦИИ SIM:
+   - "1Sim" (одна SIM-карта):
+     * "sim+esim", "сим есим", "сим+есим", "nano-SIM + eSim", "sim"
+     * "1sim", "1 sim", "одна сим", "одна sim"
+   
+   - "2Sim" (две SIM-карты):
+     * "сим+сим", "sim+sim", "2sim", "2 sim", "две сим", "две sim"
+   
+   - "eSim" (только eSim):
+     * "nano-Sim", "нано-сим", "esim", "e-sim", "эсим"
 
 ПРИМЕРЫ:
 
-"Куплю 17 256 синий" → [{"original": "Куплю 17 256 синий", "normalized": "iPhone 17 256 Mist Blue 1Sim"}]
-"17 про 512 orange" → [{"original": "17 про 512 orange", "normalized": "iPhone 17 Pro 512 Cosmic Orange 1Sim"}]
+"Куплю 17 256 синий сим" → [{"original": "Куплю 17 256 синий", "normalized": "iPhone 17 256 Mist Blue 1Sim"}]
+"17 про 512 orange сим" → [{"original": "17 про 512 orange", "normalized": "iPhone 17 Pro 512 Cosmic Orange 1Sim"}]
+"17 Pro 256 Orange (eSIM)" → [{"original": "17 Pro 256 Orange (eSIM)", "normalized": "iPhone 17 Pro 256 Cosmic Orange eSim"}]
 "13) Куплю 17 pro 512gb Orange 1 sim Европа ? ответил без цены" → [{"original": "13) Куплю 17 pro 512gb Orange 1 sim Европа ? ответил без цены", "normalized": "iPhone 17 Pro 512 Cosmic Orange 1Sim"}]
 
 ПРИМЕРЫ ЦВЕТОВ ДЛЯ iPhone 17 Pro/Pro Max:
-"17 pro 256 белый" → [{"original": "17 pro 256 белый", "normalized": "iPhone 17 Pro 256 Silver 1Sim"}]
-"17 pro max 512 white" → [{"original": "17 pro max 512 white", "normalized": "iPhone 17 Pro Max 512 Silver 1Sim"}]
+"17 pro 256 белый сим" → [{"original": "17 pro 256 белый", "normalized": "iPhone 17 Pro 256 Silver 1Sim"}]
+"17 pro max 512 white сим" → [{"original": "17 pro max 512 white", "normalized": "iPhone 17 Pro Max 512 Silver 1Sim"}]
+
+ПРИМЕРЫ SIM-КАРТ:
+"17 pro 256 sim+esim" → [{"original": "17 pro 256 sim+esim", "normalized": "iPhone 17 Pro 256 Silver 1Sim"}]
+"17 pro max сим+сим" → [{"original": "17 pro max сим+сим", "normalized": "iPhone 17 Pro Max 256 Silver 2Sim"}]
+"17 air nano-Sim" → [{"original": "17 air nano-Sim", "normalized": "iPhone Air 256 Cloud White eSim"}]
+
+ПРИМЕРЫ С ФЛАГАМИ СТРАН:
+"17 Pro 256GB Orange 🇯🇵" → [{"original": "17 Pro 256GB Orange 🇯🇵", "normalized": ""}]
+"17 pro max 512 white 🇺🇸" → [{"original": "17 pro max 512 white 🇺🇸", "normalized": ""}]
+"17 Air 256GB 🇪🇺" → [{"original": "17 Air 256GB 🇪🇺", "normalized": ""}]
+
+ПРИМЕРЫ БЕЗ SIM-КАРТЫ (ИГНОРИРОВАТЬ):
+"17 Pro 256 Orange" → [{"original": "17 Pro 256 Orange", "normalized": ""}]
+"17 256 синий" → [{"original": "17 256 синий", "normalized": ""}]
+"17 Air 512 white" → [{"original": "17 Air 512 white", "normalized": ""}]
 
 МНОГОСТРОЧНЫЕ СООБЩЕНИЯ:
 "КУПЛЮ\n\n17 Pro 256 silver sim - 1шт" → [{"original": "КУПЛЮ", "normalized": ""}, {"original": "17 Pro 256 silver sim - 1шт", "normalized": "iPhone 17 Pro 256 Silver 1Sim"}]
@@ -108,7 +138,7 @@ export class AimlApiService {
                         content: message
                     }
                 ],
-                max_tokens: 300,  // Еще больше уменьшено для предотвращения зацикливания
+                max_tokens: 500,  // Увеличено для длинных сообщений с множеством товаров
                 temperature: 0.3,  // Увеличено для разнообразия ответов
             };
             
@@ -186,7 +216,26 @@ export class AimlApiService {
             try {
                 parsedProducts = JSON.parse(responseText);
             } catch (e) {
-                console.warn('⚠️ Ошибка парсинга JSON:', e.message);
+                console.error('❌ Ошибка парсинга JSON:', e.message);
+                console.error('📄 Проблемный JSON:', responseText);
+                console.error('📏 Длина ответа:', responseText.length);
+                
+                // Попробуем найти и исправить обрезанный JSON
+                if (responseText.includes('"original"') && !responseText.endsWith(']')) {
+                    console.log('🔧 Попытка исправления обрезанного JSON...');
+                    
+                    // Ищем последний полный объект
+                    const lastCompleteObject = responseText.lastIndexOf('}');
+                    if (lastCompleteObject > 0) {
+                        const fixedJson = responseText.substring(0, lastCompleteObject + 1) + ']';
+                        try {
+                            parsedProducts = JSON.parse(fixedJson);
+                            console.log('✅ JSON исправлен успешно');
+                        } catch (e2) {
+                            console.error('❌ Не удалось исправить JSON:', e2.message);
+                        }
+                    }
+                }
             }
 
             return {
