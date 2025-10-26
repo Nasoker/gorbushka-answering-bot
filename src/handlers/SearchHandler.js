@@ -57,43 +57,28 @@ export class SearchHandler {
                 const productsWithPrices = await this.searchProductsWithPrices(response.products);
                 console.log(productsWithPrices);
                 
-                // Фильтруем только найденные товары
-                const foundProducts = productsWithPrices.products.filter(p => p.found);
-                console.log(foundProducts)
-                
-                if (foundProducts.length > 0) {
-                    // Проверяем, есть ли товары с ценами
-                    const productsWithValidPrices = foundProducts.filter(p => p.price && p.price !== 'нет цены' && p.price.trim() !== '');
-                    console.log(`🔍 Товары с ценами: ${productsWithValidPrices.length}`);
-                    if (productsWithValidPrices.length === 0) {
-                        console.log(`⚠️ Все найденные товары без цен. Пропускаем ответ.`);
-                        return;
-                    }
-                    
-                    // Форматируем сообщение с сохранением исходного порядка
-                    const replyMessage = this.formatMessageWithPrices(message.text, productsWithPrices.products);
+                // Форматируем сообщение с сохранением исходного порядка
+                const replyMessage = this.formatMessageWithPrices(message.text, productsWithPrices.products);
 
-                    // Проверяем, что сообщение не пустое
-                    if (!replyMessage || replyMessage.trim() === '') {
-                        console.log(`⚠️ Сформированное сообщение пустое. Пропускаем отправку.`);
-                        return;
-                    }
-
-                    // Вычисляем задержку: 5-7 секунд на каждый товар
-                    const delayPerProduct = this.getRandomDelay(5000, 7000); 
-                    const totalDelay = delayPerProduct * productsWithValidPrices.length;
-                    
-                    if (productsWithPrices.notFound.length > 0) {
-                        console.log(`⚠️ Не найдены товары: ${productsWithPrices.notFound.join(', ')}`);
-                    }
-                    console.log(`🔄 Задержка: ${totalDelay} мс для ${productsWithValidPrices.length} товаров. Отправка сообщения для пользователя: ${sender.username}`);
-                    console.log(`📝 Сформированное сообщение: "${replyMessage}"`);
-                    
-                    await this.delay(totalDelay);
-                    await this.bot.sendPrivateMessage(sender.username, replyMessage);
-                } else {
-                    console.log(`⚠️ Ни один товар не найден в таблице. Пропускаем ответ.`);
+                // Проверяем, что сообщение не пустое
+                if (!replyMessage || replyMessage.trim() === '') {
+                    console.log(`⚠️ Сформированное сообщение пустое. Пропускаем отправку.`);
+                    return;
                 }
+
+                // Вычисляем задержку: 5-7 секунд на каждый товар с ценой
+                const productsWithValidPrices = productsWithPrices.products.filter(p => p.found && p.price && p.price !== 'нет цены' && p.price.trim() !== '');
+                const delayPerProduct = this.getRandomDelay(5000, 7000); 
+                const totalDelay = delayPerProduct * productsWithValidPrices.length;
+                
+                if (productsWithPrices.notFound.length > 0) {
+                    console.log(`⚠️ Не найдены товары: ${productsWithPrices.notFound.join(', ')}`);
+                }
+                console.log(`🔄 Задержка: ${totalDelay} мс для ${productsWithValidPrices.length} товаров. Отправка сообщения для пользователя: ${sender.username}`);
+                console.log(`📝 Сформированное сообщение: "${replyMessage}"`);
+                
+                await this.delay(totalDelay);
+                await this.bot.sendPrivateMessage(sender.username, replyMessage);
             } else {
                 console.error(`❌ Ошибка получения ответа от AIML API: ${response.error}`);
             }
@@ -259,8 +244,9 @@ export class SearchHandler {
         for (const line of lines) {
             const trimmedLine = line.trim();
             
-            // Если строка пустая - пропускаем
+            // Если строка пустая - добавляем пустую строку для сохранения форматирования
             if (trimmedLine === '') {
+                resultLines.push('');
                 continue;
             }
             
@@ -291,12 +277,14 @@ export class SearchHandler {
                 console.log(`✅ Добавляем цену для "${trimmedLine}": "${product.price}"`);
                 resultLines.push(`${trimmedLine} ${product.price}`);
             } else {
-                // Товар не найден или без цены - НЕ добавляем в результат
+                // Товар не найден или без цены - добавляем БЕЗ цены
                 if (product) {
                     console.log(`⚠️ Товар найден, но без цены: "${trimmedLine}", found: ${product.found}, price: "${product.price}"`);
                 } else {
                     console.log(`ℹ️ Строка не является товаром: "${trimmedLine}"`);
                 }
+                // ВСЕГДА добавляем строку в результат, даже если товар не найден
+                resultLines.push(trimmedLine);
             }
         }
 
