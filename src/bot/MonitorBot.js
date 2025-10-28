@@ -51,6 +51,14 @@ export class MonitorBot extends TelegramBot {
                 console.log('✅ Используется сохраненная сессия\n');
             }
 
+            // Инициализация базы данных
+            try {
+                await this.initializeDatabase();
+            } catch (error) {
+                console.error('⚠️ Ошибка инициализации базы данных:', error.message);
+                console.log('ℹ️ Бот продолжит работу без БД\n');
+            }
+
             // Инициализация Google Sheets
             try {
                 await this.searchHandler.initialize();

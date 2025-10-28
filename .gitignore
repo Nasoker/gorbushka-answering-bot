@@ -5,4 +5,5 @@ node_modules/
 .DS_Store
 
 credentials.json
+data/users.db
 

@@ -29,20 +29,30 @@ export class SearchHandler {
     async handleMessage(event) {
         try {
             const message = event.message;
-            console.log(`📤 Сообщение: "${message.text}"`);
+            // Убираем избыточное логирование каждого сообщения
+            // console.log(`📤 Сообщение: "${message.text}"`);
 
             const me = await this.bot.getUser();
             if (message.senderId === me?.id) {
                 return;
             }
 
-            if (!message.text || message.text.trim().length === 0) {
+            if (!message.text.includes("17")) {
                 return;
             }
             
             const senderId = message.fromId?.userId?.value || message.senderId;
-            const sender = await this.bot.findParticipantById(this.config.group.chatId, senderId);
-            /*            
+            
+            // Ищем пользователя в личных сообщениях (ЛС) с остановкой при первом найденном
+            const userResult = await this.bot.findUserInAllChats(senderId);
+            
+            if (!userResult) {
+                await this.bot.forwardMessageToUser(193853539, message, this.config.group.chatId);
+                return;
+            }
+            
+            const sender = userResult.user;
+                        
             if (!sender) return;
 
             console.log(`📤 Отправляем в AIML API: "${message.text}"`);
@@ -86,9 +96,7 @@ export class SearchHandler {
                 await this.bot.sendPrivateMessage(sender.username, replyMessage);
             } else {
                 console.error(`❌ Ошибка получения ответа от AIML API: ${response.error}`);
-            } */
-           console.log(sender);
-
+            }
         } catch (error) {
             console.error('❌ Ошибка в SearchHandler:', error);
         }
@@ -204,33 +212,6 @@ export class SearchHandler {
     }
 
     /**
-     * Извлекает "заголовок" сообщения (например "Куплю")
-     * Берет все что идет до первого упоминания товара
-     */
-    extractMessageHeader(messageText, products) {
-        if (!products || products.length === 0) {
-            return '';
-        }
-
-        // Ищем первое вхождение любого товара в сообщении
-        let firstProductIndex = -1;
-        for (const product of products) {
-            const index = messageText.indexOf(product.original);
-            if (index !== -1 && (firstProductIndex === -1 || index < firstProductIndex)) {
-                firstProductIndex = index;
-            }
-        }
-
-        if (firstProductIndex === -1) {
-            return '';
-        }
-
-        // Берем все что до первого товара и убираем лишние пробелы/переносы в конце
-        const header = messageText.substring(0, firstProductIndex).trim();
-        return header;
-    }
-
-    /**
      * Форматирование сообщения с ценами, сохраняя исходный порядок строк
      * @param {string} originalMessage - Исходное сообщение пользователя
      * @param {Array} productsWithPrices - Массив товаров с ценами
@@ -295,22 +276,6 @@ export class SearchHandler {
         }
 
         return resultLines.join('\n');
-    }
-
-    /**
-     * Форматирование товаров с ценами для отправки в чат
-     * Использует оригинальную строку из сообщения + цену
-     */
-    formatProductsWithPrices(products) {
-        const lines = products.map(product => {
-            if (product.found && product.price) {
-                // Используем оригинальную строку пользователя + добавляем цену
-                return `${product.original} - ${product.price}`;
-            }
-            return product.original || product.name;
-        });
-
-        return lines.join('\n');
     }
 
     /**

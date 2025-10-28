@@ -7,8 +7,6 @@
 import { config } from '../src/config/config.js';
 import fs from 'fs';
 
-console.log('🔍 Проверка конфигурации...\n');
-
 const checks = {
     '✅ API_ID': config.telegram.apiId && !isNaN(config.telegram.apiId),
     '✅ API_HASH': config.telegram.apiHash && config.telegram.apiHash !== 'your_api_hash',
@@ -30,30 +28,6 @@ Object.entries(checks).forEach(([key, value]) => {
         }
     }
 });
-
-if (config.telegram.apiId) {
-    console.log(`API_ID: ${config.telegram.apiId}`);
-}
-
-if (config.telegram.phoneNumber) {
-    const phone = config.telegram.phoneNumber;
-    if (!phone.startsWith('+')) {
-        console.log('⚠️  PHONE_NUMBER должен начинаться с + (международный формат)');
-        allGood = false;
-    } else {
-        console.log(`Номер телефона: ${phone}`);
-    }
-}
-
-if (config.group.chatId) {
-    console.log(`ID группы: ${config.group.chatId}`);
-}
-
-if (config.telegram.sessionString) {
-    console.log(`Сессия: сохранена (${config.telegram.sessionString.length} символов)`);
-} else {
-    console.log('Сессия: не сохранена (потребуется ввод кода при запуске)');
-}
 
 // Проверка наличия .env файла
 if (!fs.existsSync('.env')) {

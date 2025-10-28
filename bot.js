@@ -12,7 +12,6 @@ const bot = new MonitorBot({ config });
 
 // Обработка завершения работы
 process.on('SIGINT', async () => {
-    console.log('\n\n👋 Завершение работы...');
     await bot.disconnect();
     process.exit(0);
 });

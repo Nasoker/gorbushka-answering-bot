@@ -45,7 +45,6 @@ async function saveSession() {
         console.log('\n✅ Успешная авторизация!');
         console.log('\n📝 Добавьте эту строку в файл .env:');
         console.log(`SESSION_STRING=${client.session.save()}`);
-        console.log('\nПосле добавления сессии, бот будет запускаться без ввода кода.\n');
 
         await client.disconnect();
     } catch (error) {
