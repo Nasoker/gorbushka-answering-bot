@@ -185,7 +185,6 @@ export class GoogleSheetsService {
                 }
             }
 
-            console.log(`🔍 Найдено ${results.length} совпадений для "${searchText}"`);
             return results;
         } catch (error) {
             console.error('❌ Ошибка поиска:', error.message);
@@ -242,7 +241,6 @@ export class GoogleSheetsService {
                 }
             }
 
-            console.log(`🔍 Найдено ${results.length} совпадений по критериям`);
             return results;
         } catch (error) {
             console.error('❌ Ошибка поиска по критериям:', error.message);

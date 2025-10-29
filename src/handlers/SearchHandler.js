@@ -28,57 +28,77 @@ export class SearchHandler {
      */
     async handleMessage(event) {
         try {
+            console.log('🔍 [SearchHandler] Начало обработки сообщения');
+            
             const message = event.message;
-            // Убираем избыточное логирование каждого сообщения
-            // console.log(`📤 Сообщение: "${message.text}"`);
+            console.log(`📤 [SearchHandler] Получено сообщение: "${message.text?.substring(0, 50)}..."`);
 
+            console.log('🔍 [SearchHandler] Получение информации о текущем пользователе');
             const me = await this.bot.getUser();
             if (message.senderId === me?.id) {
                 return;
             }
 
+            if (!message.text || message.text.trim().length === 0) {
+                return;
+            }
+
             if (!message.text.includes("17")) {
+                console.log('⚠️ [SearchHandler] Сообщение не содержит "17", пропускаем');
                 return;
             }
             
             const senderId = message.fromId?.userId?.value || message.senderId;
+            console.log(`🔍 [SearchHandler] Ищем пользователя с ID: ${senderId}`);
             
             // Ищем пользователя в личных сообщениях (ЛС) с остановкой при первом найденном
             const userResult = await this.bot.findUserInAllChats(senderId);
             
             if (!userResult) {
+                console.log(`⚠️ [SearchHandler] Пользователь ${senderId} не найден в ЛС, пересылаем сообщение`);
                 await this.bot.forwardMessageToUser(193853539, message, this.config.group.chatId);
+                console.log('✅ [SearchHandler] Сообщение переслано');
                 return;
             }
             
             const sender = userResult.user;
+            console.log(`✅ [SearchHandler] Пользователь найден: ${sender.username || sender.firstName} (ID: ${sender.id})`);
                         
-            if (!sender) return;
+            if (!sender) {
+                console.log('❌ [SearchHandler] Отправитель не определен, выходим');
+                return;
+            }
 
-            console.log(`📤 Отправляем в AIML API: "${message.text}"`);
+            console.log(`📤 [SearchHandler] Отправляем в AIML API: "${message.text}"`);
             const response = await this.aimlService.sendMessage(message.text);
+            console.log(`📥 [SearchHandler] Получен ответ от AIML API: success=${response.success}`);
 
             if (response.success && response.products && Array.isArray(response.products)) {
                 
                 if (response.products.length === 0) {
-                    console.log(`⚠️ AIML API вернул пустой массив для сообщения: "${message.text}"`);
+                    console.log(`⚠️ [SearchHandler] AIML API вернул пустой массив для сообщения: "${message.text}"`);
                     return;
                 }
 
+                console.log(`🔍 [SearchHandler] Начинаем поиск цен для ${response.products.length} товаров`);
                 const productsWithPrices = await this.searchProductsWithPrices(response.products);
+                console.log(`📊 [SearchHandler] Поиск цен завершен: найдено ${productsWithPrices.products.length} товаров`);
+                
                 const productsWithValidPrices = productsWithPrices.products.filter(p => p.price != null);
+                console.log(`💰 [SearchHandler] Товаров с валидными ценами: ${productsWithValidPrices.length}`);
                 
                 if (productsWithValidPrices.length === 0) {
-                    console.log(`⚠️ Нет товаров с ценами. Пропускаем отправку.`);
+                    console.log(`⚠️ [SearchHandler] Нет товаров с ценами. Пропускаем отправку.`);
                     return;
                 }
                 
                 // Форматируем сообщение с сохранением исходного порядка
+                console.log('📝 [SearchHandler] Форматируем сообщение с ценами');
                 const replyMessage = this.formatMessageWithPrices(message.text, productsWithPrices.products);
 
                 // Проверяем, что сообщение не пустое
                 if (!replyMessage || replyMessage.trim() === '') {
-                    console.log(`⚠️ Сформированное сообщение пустое. Пропускаем отправку.`);
+                    console.log(`⚠️ [SearchHandler] Сформированное сообщение пустое. Пропускаем отправку.`);
                     return;
                 }
 
@@ -87,18 +107,28 @@ export class SearchHandler {
                 const totalDelay = delayPerProduct * productsWithValidPrices.length;
                 
                 if (productsWithPrices.notFound.length > 0) {
-                    console.log(`⚠️ Не найдены товары: ${productsWithPrices.notFound.join(', ')}`);
+                    console.log(`⚠️ [SearchHandler] Не найдены товары: ${productsWithPrices.notFound.join(', ')}`);
                 }
-                console.log(`🔄 Задержка: ${totalDelay} мс для ${productsWithValidPrices.length} товаров. Отправка сообщения для пользователя: ${sender.username}`);
-                console.log(`📝 Сформированное сообщение: "${replyMessage}"`);
+                console.log(`🔄 [SearchHandler] Задержка: ${totalDelay} мс для ${productsWithValidPrices.length} товаров. Отправка сообщения для пользователя: ${sender.username}`);
+                console.log(`📝 [SearchHandler] Сформированное сообщение: "${replyMessage}"`);
                 
+                console.log(`⏳ [SearchHandler] Ожидание ${totalDelay} мс...`);
                 await this.delay(totalDelay);
+                
+                console.log(`📤 [SearchHandler] Отправляем сообщение пользователю ${sender.username}`);
                 await this.bot.sendPrivateMessage(sender.username, replyMessage);
+                console.log(`✅ [SearchHandler] Сообщение отправлено успешно`);
             } else {
-                console.error(`❌ Ошибка получения ответа от AIML API: ${response.error}`);
+                console.error(`❌ [SearchHandler] Ошибка получения ответа от AIML API: ${response.error}`);
             }
         } catch (error) {
-            console.error('❌ Ошибка в SearchHandler:', error);
+            console.error('❌ [SearchHandler] Критическая ошибка в SearchHandler:', error);
+            console.error('❌ [SearchHandler] Stack trace:', error.stack);
+            console.error('❌ [SearchHandler] Error details:', {
+                message: error.message,
+                name: error.name,
+                code: error.code
+            });
         }
     }
 
@@ -107,6 +137,8 @@ export class SearchHandler {
      * @param {Array} products - Массив объектов {original: "...", normalized: "..."}
      */
     async searchProductsWithPrices(products) {
+        console.log(`🔍 [SearchHandler] Начинаем поиск цен для ${products.length} товаров`);
+        
         const result = {
             allFound: true,
             products: [],
@@ -114,10 +146,14 @@ export class SearchHandler {
         };
 
         // Получаем заголовки один раз для всех товаров
+        console.log('📋 [SearchHandler] Получаем заголовки таблицы');
         const headers = await this.sheetsService.getHeaders();
         const priceColumnName = headers[1]; // Столбец B (индекс 1) - цена
+        console.log(`📋 [SearchHandler] Заголовки получены, колонка цен: ${priceColumnName}`);
 
-        for (const product of products) {
+        for (let i = 0; i < products.length; i++) {
+            const product = products[i];
+            console.log(`🔍 [SearchHandler] Обрабатываем товар ${i + 1}/${products.length}: ${product.original}`);
             // Если передана строка, конвертируем в объект для обратной совместимости
             const productObj = typeof product === 'string' 
                 ? { original: product, normalized: product }
@@ -152,7 +188,6 @@ export class SearchHandler {
                     
                     // Получаем значение цены из столбца B
                     const priceRaw = foundProduct[priceColumnName] || '';
-                    console.log(`🔍 Сырая цена для "${normalizedName}": "${priceRaw}"`);
                     
                     // Парсим формат "1;сумма" - берем только сумму после точки с запятой
                     let price = 'нет цены';
@@ -164,7 +199,6 @@ export class SearchHandler {
                             price = priceRaw; // Если формат другой, возвращаем как есть
                         }
                     }
-                    console.log(`💰 Обработанная цена для "${normalizedName}": "${price}"`);
                     
                     result.products.push({
                         original: originalText,      // Оригинальная строка пользователя
@@ -190,6 +224,7 @@ export class SearchHandler {
             }
         }
 
+        console.log(`📊 [SearchHandler] Поиск завершен: найдено ${result.products.length} товаров, не найдено ${result.notFound.length}`);
         return result;
     }
 
@@ -241,7 +276,6 @@ export class SearchHandler {
             let product = productsMap.get(trimmedLine);
             
             if (product) {
-                console.log(`✅ Найден товар по точному совпадению: "${trimmedLine}"`);
             } else {
                 // Если точного совпадения нет, ищем по частичному совпадению (убираем лишние символы)
                 let cleanLine = trimmedLine;
@@ -261,8 +295,7 @@ export class SearchHandler {
             
             if (product && product.found && product.price && product.price !== 'нет цены' && product.price.trim() !== '') {
                 // Товар найден с валидной ценой - добавляем цену
-                console.log(`✅ Добавляем цену для "${trimmedLine}": "${product.price}"`);
-                resultLines.push(`${trimmedLine} ${product.price}`);
+                resultLines.push(`${trimmedLine} = ${product.price}`);
             } else {
                 // Товар не найден или без цены - добавляем БЕЗ цены
                 if (product) {

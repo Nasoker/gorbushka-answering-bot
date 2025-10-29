@@ -159,8 +159,6 @@ export class AimlApiService {
             const data = await response.json();
             let responseText = data.choices?.[0]?.message?.content || '';
             
-            console.log(`🔄 Ответ от AIML API: ${responseText}`);
-            
             // Проверяем на подозрительные ответы (повторяющиеся символы или фразы)
             if (responseText.length > 200) {
                 // Проверяем на повторяющиеся символы
@@ -206,7 +204,6 @@ export class AimlApiService {
             const jsonMatch = responseText.match(/^(\[.*?\])/s);
             if (jsonMatch) {
                 responseText = jsonMatch[1];
-                console.log(`🔍 Извлечен JSON из ответа: ${responseText}`);
             }
             
             responseText = responseText.trim();
