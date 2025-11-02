@@ -282,7 +282,10 @@ export class TelegramBot {
     subscribeToMessages(handler) {
         const { chatId } = this.config.group;
 
-        // Создаем обертку для обработчика с логированием ошибок (неблокирующую)
+        // Запускаем polling как основной способ получения сообщений
+        this._startPolling(handler, chatId);
+
+        // Создаем обертку для обработчика с логированием ошибок (резервный канал)
         this._wrappedMessageHandler = (event) => {
             this.lastMessageAt = Date.now();
             
@@ -324,7 +327,7 @@ export class TelegramBot {
         this.client.addEventHandler(this._wrappedMessageHandler, new NewMessage({
             chats: [chatId],
         }));
-        console.log(`✅ Подписка на сообщения: ${chatId}`);
+        console.log(`✅ Подписка на сообщения (резерв): ${chatId}`);
 
         // Дополнительная проверка подписки через 5 секунд
         setTimeout(() => {
@@ -332,11 +335,7 @@ export class TelegramBot {
             this._testMessageSubscription(chatId);
         }, 5000);
 
-        // Запускаем polling как резервный способ получения сообщений
-        setTimeout(() => {
-            console.log(`🔄 [TelegramBot] Запускаем резервный polling через 10 сек...`);
-            this._startPolling(handler, chatId);
-        }, 10000);
+        // Polling уже запущен как основной канал
 
         // Запускаем heartbeat, если еще не запущен
         this._ensureHeartbeat();
@@ -478,12 +477,14 @@ export class TelegramBot {
                         console.error('❌ [Heartbeat] Ошибка проверки соединения:', err.message);
                     }
                 } else if (silence != null && silence < 5000) {
-                    // Если сообщения приходят регулярно, отключаем polling
-                    if (this._pollingTimer) {
-                        console.log(`✅ [Heartbeat] Основной обработчик работает нормально, отключаем polling`);
-                        clearInterval(this._pollingTimer);
-                        this._pollingTimer = null;
-                    }
+                    // Сообщения приходят регулярно — оставляем polling активным как основной канал
+                }
+
+                // Гарантируем, что polling запущен (как основной)
+                if (!this._pollingTimer) {
+                    const { chatId } = this.config.group;
+                    console.log('🔄 [Heartbeat] Polling не активен, запускаем...');
+                    this._startPolling(this._wrappedMessageHandler || (() => {}), chatId);
                 }
             } catch (e) {
                 console.error('❌ [Heartbeat] Ошибка в heartbeat:', e.message);
