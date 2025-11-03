@@ -88,6 +88,7 @@ export class AimlApiService {
    - "1Sim" (одна SIM-карта):
      * "sim+esim", "сим есим", "сим+есим", "nano-SIM + eSim", "sim"
      * "1sim", "1 sim", "одна сим", "одна sim"
+     * "физ сим", "физ sim", "физическая сим"
    
    - "2Sim" (две SIM-карты):
      * "сим+сим", "sim+sim", "2sim", "2 sim", "две сим", "две sim"
@@ -100,16 +101,6 @@ export class AimlApiService {
 "Куплю 17 256 синий сим" → [{"original": "Куплю 17 256 синий", "normalized": "iPhone 17 256 Mist Blue 1Sim"}]
 "17 про 512 orange сим" → [{"original": "17 про 512 orange", "normalized": "iPhone 17 Pro 512 Cosmic Orange 1Sim"}]
 "17 Pro 256 Orange (eSIM)" → [{"original": "17 Pro 256 Orange (eSIM)", "normalized": "iPhone 17 Pro 256 Cosmic Orange eSim"}]
-"13) Куплю 17 pro 512gb Orange 1 sim Европа ? ответил без цены" → [{"original": "13) Куплю 17 pro 512gb Orange 1 sim Европа ? ответил без цены", "normalized": "iPhone 17 Pro 512 Cosmic Orange 1Sim"}]
-
-ПРИМЕРЫ ЦВЕТОВ ДЛЯ iPhone 17 Pro/Pro Max:
-"17 pro 256 белый сим" → [{"original": "17 pro 256 белый", "normalized": "iPhone 17 Pro 256 Silver 1Sim"}]
-"17 pro max 512 white сим" → [{"original": "17 pro max 512 white", "normalized": "iPhone 17 Pro Max 512 Silver 1Sim"}]
-
-ПРИМЕРЫ SIM-КАРТ:
-"17 pro 256 sim+esim" → [{"original": "17 pro 256 sim+esim", "normalized": "iPhone 17 Pro 256 Silver 1Sim"}]
-"17 pro max сим+сим" → [{"original": "17 pro max сим+сим", "normalized": "iPhone 17 Pro Max 256 Silver 2Sim"}]
-"17 air nano-Sim" → [{"original": "17 air nano-Sim", "normalized": "iPhone Air 256 Cloud White eSim"}]
 
 ПРИМЕРЫ С ФЛАГАМИ СТРАН:
 "17 Pro 256GB Orange 🇯🇵" → [{"original": "17 Pro 256GB Orange 🇯🇵", "normalized": ""}]
@@ -119,7 +110,10 @@ export class AimlApiService {
 ПРИМЕРЫ БЕЗ SIM-КАРТЫ (ИГНОРИРОВАТЬ):
 "17 Pro 256 Orange" → [{"original": "17 Pro 256 Orange", "normalized": ""}]
 "17 256 синий" → [{"original": "17 256 синий", "normalized": ""}]
-"17 Air 512 white" → [{"original": "17 Air 512 white", "normalized": ""}]
+
+ИСКЛЮЧЕНИЕ для iPhone 17 Air: если НЕ указана SIM-карта → возвращать eSim
+"17 Air 512 white" → [{"original": "17 Air 512 white", "normalized": "iPhone Air 512 Cloud White eSim"}]
+"17 Air 256" → [{"original": "17 Air 256", "normalized": "iPhone Air 256 Cloud White eSim"}]
 
 МНОГОСТРОЧНЫЕ СООБЩЕНИЯ:
 "КУПЛЮ\n\n17 Pro 256 silver sim - 1шт" → [{"original": "КУПЛЮ", "normalized": ""}, {"original": "17 Pro 256 silver sim - 1шт", "normalized": "iPhone 17 Pro 256 Silver 1Sim"}]
