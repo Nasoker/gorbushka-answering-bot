@@ -1,5 +1,6 @@
 import { TelegramBot } from './TelegramBot.js';
 import { SearchHandler } from '../handlers/SearchHandler.js';
+import { ApiServer } from '../services/ApiServer.js';
 import { getLogger } from '../services/LoggerService.js';
 import input from 'input';
 
@@ -12,6 +13,7 @@ export class MonitorBot extends TelegramBot {
         this.logger = getLogger();
         this.messageHandler = options.messageHandler || this.defaultMessageHandler.bind(this);
         this.searchHandler = new SearchHandler(this, this.config);
+        this.apiServer = new ApiServer({ port: 3001 });
     }
 
     /**
@@ -19,6 +21,14 @@ export class MonitorBot extends TelegramBot {
      */
     async defaultMessageHandler(event) {
         try {
+            // Проверяем, включена ли обработка
+            const stateManager = this.apiServer.getStateManager();
+            
+            if (!stateManager.isEnabled()) {
+                // Обработка выключена - пропускаем сообщение
+                return;
+            }
+
             await this.searchHandler.handleMessage(event);
         } catch (error) {
             this.logger.error('MonitorBot', 'Ошибка обработки сообщения', { error: error.message });
@@ -31,6 +41,10 @@ export class MonitorBot extends TelegramBot {
     async start() {
         try {
             this.config.validate();
+            
+            // Запуск API сервера
+            await this.apiServer.start();
+            
             this.createClient();
             
             const sessionString = await this.authenticate({
@@ -69,6 +83,21 @@ export class MonitorBot extends TelegramBot {
             this.logger.error('MonitorBot', 'Критическая ошибка при запуске', { error: error.message });
             process.exit(1);
         }
+    }
+
+    /**
+     * Остановка бота
+     */
+    async disconnect() {
+        this.logger.info('MonitorBot', 'Остановка бота');
+        
+        // Остановка API сервера
+        if (this.apiServer) {
+            await this.apiServer.stop();
+        }
+        
+        // Отключение от Telegram
+        await super.disconnect();
     }
 
 }
