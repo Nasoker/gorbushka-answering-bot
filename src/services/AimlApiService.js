@@ -37,6 +37,7 @@ export class AimlApiService {
 - Если строка НЕ содержит iPhone 17, iPhone Air или их сокращения (17, Air), то "normalized" должен быть пустой строкой ""
 - Если в строке есть флаги стран (🇯🇵, 🇺🇸, 🇪🇺, 🇨🇳 и т.д.), то "normalized" должен быть пустой строкой ""
 - Если в строке НЕТ указания про SIM-карту (sim, сим, esim, есим и т.д.), то "normalized" должен быть пустой строкой ""
+- Если в строке НЕТ указания цвета (blue, silver, orange, white, black и т.д.), то "normalized" должен быть пустой строкой ""
 
 ДОСТУПНЫЕ МОДЕЛИ (ТОЛЬКО ЭТИ!):
 
@@ -70,7 +71,7 @@ export class AimlApiService {
 
 2. ПАМЯТЬ: 256GB, 512GB, 1TB, 2TB (если не указана → 256GB)
 
-3. ЦВЕТ:
+3. ЦВЕТ (ОБЯЗАТЕЛЬНО должен быть указан в строке!):
    iPhone 17: Mist Blue, Sage, White, Black, Lavender
    iPhone 17 Pro/Pro Max: Cosmic Orange, Deep Blue, Silver
    iPhone Air: Cloud White, Light Gold, Sky Blue, Space Black
@@ -80,7 +81,7 @@ export class AimlApiService {
      * "сильвер", "silver", "белый", "white", "сильвер белый", "silver white"
      * "серебристый", "серебро", "серебряный"
    
-   Если цвет не найден → используй похожий (orange → Cosmic Orange)
+    ⚠️ ВАЖНО: Если цвет НЕ УКАЗАН в строке → "normalized" = ""
 
 4. SIM: 1Sim, 2Sim, eSim (если не указано → 1Sim, для Air → eSim)
    
@@ -111,9 +112,15 @@ export class AimlApiService {
 "17 Pro 256 Orange" → [{"original": "17 Pro 256 Orange", "normalized": ""}]
 "17 256 синий" → [{"original": "17 256 синий", "normalized": ""}]
 
+ПРИМЕРЫ БЕЗ ЦВЕТА (ИГНОРИРОВАТЬ):
+"17 Pro Max 256 Esim" → [{"original": "17 Pro Max 256 Esim", "normalized": ""}]
+"17 Pro Max 1TB Esim" → [{"original": "17 Pro Max 1TB Esim", "normalized": ""}]
+"17 Pro 512 sim" → [{"original": "17 Pro 512 sim", "normalized": ""}]
+
 ИСКЛЮЧЕНИЕ для iPhone 17 Air: если НЕ указана SIM-карта → возвращать eSim
+"17 Air 512" → [{"original": "17 Air 512", "normalized": "iPhone Air 512 Cloud White eSim"}]
+"17 Air 256 Esim" → [{"original": "17 Air 256 Esim", "normalized": "iPhone Air 256 Cloud White eSim"}]
 "17 Air 512 white" → [{"original": "17 Air 512 white", "normalized": "iPhone Air 512 Cloud White eSim"}]
-"17 Air 256" → [{"original": "17 Air 256", "normalized": "iPhone Air 256 Cloud White eSim"}]
 
 МНОГОСТРОЧНЫЕ СООБЩЕНИЯ:
 "КУПЛЮ\n\n17 Pro 256 silver sim - 1шт" → [{"original": "КУПЛЮ", "normalized": ""}, {"original": "17 Pro 256 silver sim - 1шт", "normalized": "iPhone 17 Pro 256 Silver 1Sim"}]
@@ -132,7 +139,7 @@ export class AimlApiService {
                         content: message
                     }
                 ],
-                max_tokens: 500,  // Увеличено для длинных сообщений с множеством товаров
+                max_tokens: 3000,  // Увеличено для обработки больших списков товаров (до ~40-50 товаров)
                 temperature: 0.3,  // Увеличено для разнообразия ответов
             };
             

@@ -16,10 +16,11 @@ export class TelegramBot {
         this.isDbLoaded = false;
         this.lastMessageAt = 0;
         this._heartbeatTimer = null;
-        this._wrappedMessageHandler = null;
         this._pollingTimer = null;
         this._lastPolledMessageId = 0;
+        this._messageHandler = null; // Сохраняем handler для перезапуска polling
         this._processedMessages = new Set(); // Для дедупликации сообщений
+        this._loggedSkippedMessages = new Set(); // Для предотвращения спама в консоли
     }
 
     /**
@@ -282,58 +283,12 @@ export class TelegramBot {
     subscribeToMessages(handler) {
         const { chatId } = this.config.group;
 
-        // Запускаем polling как основной способ получения сообщений
+        // Сохраняем handler для возможности перезапуска
+        this._messageHandler = handler;
+
+        // Используем ТОЛЬКО polling для получения сообщений
         this._startPolling(handler, chatId);
-
-        // Создаем обертку для обработчика с логированием ошибок (резервный канал)
-        this._wrappedMessageHandler = (event) => {
-            this.lastMessageAt = Date.now();
-            
-            // Дедупликация сообщений
-            const messageId = event.message?.id;
-            if (messageId && this._processedMessages.has(messageId)) {
-                console.log(`🔄 [TelegramBot] Сообщение ${messageId} уже обработано, пропускаем`);
-                return;
-            }
-            
-            if (messageId) {
-                this._processedMessages.add(messageId);
-                // Очищаем старые записи (оставляем только последние 1000)
-                if (this._processedMessages.size > 1000) {
-                    const toDelete = Array.from(this._processedMessages).slice(0, 500);
-                    toDelete.forEach(id => this._processedMessages.delete(id));
-                }
-            }
-            
-            console.log(`📨 [TelegramBot] Получено сообщение в группе ${chatId} в ${new Date().toLocaleTimeString()}`);
-            Promise.resolve()
-                .then(() => handler(event))
-                .then(() => {
-                    console.log(`✅ [TelegramBot] Сообщение обработано успешно в ${new Date().toLocaleTimeString()}`);
-                })
-                .catch((error) => {
-                    console.error(`❌ [TelegramBot] Ошибка при обработке сообщения в группе ${chatId}:`, error.message);
-                    console.error(`❌ [TelegramBot] Stack trace:`, error.stack);
-                    console.error(`❌ [TelegramBot] Event details:`, {
-                        messageId: event.message?.id,
-                        senderId: event.message?.senderId,
-                        text: event.message?.text?.substring(0, 100),
-                        chatId: event.chat?.id
-                    });
-                    console.log(`🔄 [TelegramBot] Продолжаем работу после ошибки`);
-                });
-        };
-
-        this.client.addEventHandler(this._wrappedMessageHandler, new NewMessage({
-            chats: [chatId],
-        }));
-        console.log(`✅ Подписка на сообщения (резерв): ${chatId}`);
-
-        // Дополнительная проверка подписки через 5 секунд
-        setTimeout(() => {
-            console.log(`🔍 [TelegramBot] Проверяем подписку на сообщения через 5 сек...`);
-            this._testMessageSubscription(chatId);
-        }, 5000);
+        console.log(`✅ [TelegramBot] Подписка на сообщения через polling: ${chatId}`);
 
         // Polling уже запущен как основной канал
 
@@ -359,18 +314,8 @@ export class TelegramBot {
                 console.log(`⚠️ [TelegramBot] Нет сообщений в чате`);
             }
             
-            // Принудительно переподписываемся
-            console.log(`🔄 [TelegramBot] Принудительная переподписка...`);
-            this.client.removeEventHandler(this._wrappedMessageHandler);
-            
-            // Небольшая задержка перед переподпиской
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            
-            this.client.addEventHandler(this._wrappedMessageHandler, new NewMessage({
-                chats: [chatId],
-            }));
-            
-            console.log(`✅ [TelegramBot] Переподписка завершена`);
+            // Polling работает постоянно, переподписка не требуется
+            console.log(`✅ [TelegramBot] Проверка polling завершена`);
             
         } catch (error) {
             console.error(`❌ [TelegramBot] Ошибка тестирования подписки:`, error.message);
@@ -390,15 +335,28 @@ export class TelegramBot {
                 
                 for (const message of messages) {
                     if (message.id > this._lastPolledMessageId) {
-                        this._lastPolledMessageId = message.id;
+                        // Дедупликация сообщений (атомарная проверка для защиты от race condition)
+                        const sizeBefore = this._processedMessages.size;
+                        this._processedMessages.add(message.id);
                         
-                        // Дедупликация сообщений
-                        if (this._processedMessages.has(message.id)) {
-                            console.log(`🔄 [Polling] Сообщение ${message.id} уже обработано, пропускаем`);
+                        // Если размер не изменился - сообщение уже было обработано
+                        if (sizeBefore === this._processedMessages.size) {
+                            // Логируем только один раз для каждого сообщения, чтобы не спамить консоль
+                            if (!this._loggedSkippedMessages.has(message.id)) {
+                                console.log(`🔄 [Polling] Сообщение ${message.id} уже обработано, пропускаем`);
+                                this._loggedSkippedMessages.add(message.id);
+                                
+                                // Очищаем старые записи (оставляем только последние 100)
+                                if (this._loggedSkippedMessages.size > 100) {
+                                    const toDelete = Array.from(this._loggedSkippedMessages).slice(0, 50);
+                                    toDelete.forEach(id => this._loggedSkippedMessages.delete(id));
+                                }
+                            }
                             continue;
                         }
                         
-                        this._processedMessages.add(message.id);
+                        // Обновляем только если сообщение НЕ было обработано
+                        this._lastPolledMessageId = message.id;
                         this.lastMessageAt = Date.now();
                         
                         console.log(`📨 [Polling] Получено сообщение: "${message.text?.substring(0, 50)}..." в ${new Date().toLocaleTimeString()}`);
@@ -452,15 +410,8 @@ export class TelegramBot {
                         await this.client.connect();
                         console.log('✅ [Heartbeat] Переподключение успешно');
                         
-                        // Переподписываемся на сообщения после переподключения
-                        if (this._wrappedMessageHandler) {
-                            console.log('🔄 [Heartbeat] Переподписываемся на сообщения...');
-                            const { chatId } = this.config.group;
-                            this.client.addEventHandler(this._wrappedMessageHandler, new NewMessage({
-                                chats: [chatId],
-                            }));
-                            console.log(`✅ [Heartbeat] Переподписка на сообщения: ${chatId}`);
-                        }
+                        // Polling продолжит работу автоматически после переподключения
+                        console.log('✅ [Heartbeat] Переподключение завершено, polling активен');
                     } catch (err) {
                         console.error('❌ [Heartbeat] Ошибка переподключения:', err.message);
                     }
@@ -480,11 +431,11 @@ export class TelegramBot {
                     // Сообщения приходят регулярно — оставляем polling активным как основной канал
                 }
 
-                // Гарантируем, что polling запущен (как основной)
-                if (!this._pollingTimer) {
+                // Гарантируем, что polling запущен
+                if (!this._pollingTimer && this._messageHandler) {
                     const { chatId } = this.config.group;
                     console.log('🔄 [Heartbeat] Polling не активен, запускаем...');
-                    this._startPolling(this._wrappedMessageHandler || (() => {}), chatId);
+                    this._startPolling(this._messageHandler, chatId);
                 }
             } catch (e) {
                 console.error('❌ [Heartbeat] Ошибка в heartbeat:', e.message);
