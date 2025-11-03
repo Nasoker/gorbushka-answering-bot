@@ -1,5 +1,6 @@
 import { TelegramBot } from './TelegramBot.js';
 import { SearchHandler } from '../handlers/SearchHandler.js';
+import { getLogger } from '../services/LoggerService.js';
 import input from 'input';
 
 /**
@@ -8,6 +9,7 @@ import input from 'input';
 export class MonitorBot extends TelegramBot {
     constructor(options = {}) {
         super(options);
+        this.logger = getLogger();
         this.messageHandler = options.messageHandler || this.defaultMessageHandler.bind(this);
         this.searchHandler = new SearchHandler(this, this.config);
     }
@@ -18,9 +20,8 @@ export class MonitorBot extends TelegramBot {
     async defaultMessageHandler(event) {
         try {
             await this.searchHandler.handleMessage(event);
-
         } catch (error) {
-            console.error('❌ Ошибка обработки сообщения:', error.message);
+            this.logger.error('MonitorBot', 'Ошибка обработки сообщения', { error: error.message });
         }
     }
 
@@ -29,51 +30,43 @@ export class MonitorBot extends TelegramBot {
      */
     async start() {
         try {
-            // Валидация конфигурации
             this.config.validate();
-
-            // Создание клиента
             this.createClient();
-            // Авторизация
+            
             const sessionString = await this.authenticate({
                 password: async () => await input.text('Введите пароль 2FA (если включен): '),
                 phoneCode: async () => await input.text('Введите код из Telegram: '),
             });
 
-            console.log('✅ Успешная авторизация!');
+            this.logger.info('MonitorBot', 'Успешная авторизация');
 
-            // Сохранение сессии
             if (!this.config.telegram.sessionString) {
                 console.log('\n📝 Сохраните эту строку сессии в переменную SESSION_STRING в .env:');
                 console.log(sessionString);
                 console.log('\n');
-            } else {
-                console.log('✅ Используется сохраненная сессия\n');
             }
 
             // Инициализация базы данных
             try {
                 await this.initializeDatabase();
             } catch (error) {
-                console.error('⚠️ Ошибка инициализации базы данных:', error.message);
-                console.log('ℹ️ Бот продолжит работу без БД\n');
+                this.logger.warning('MonitorBot', 'Ошибка инициализации БД, продолжаем без БД', { error: error.message });
             }
 
             // Инициализация Google Sheets
             try {
                 await this.searchHandler.initialize();
-                const info = await this.searchHandler.getTableInfo();
+                await this.searchHandler.getTableInfo();
             } catch (error) {
-                console.error('⚠️ Ошибка подключения к Google Sheets:', error.message);
-                console.log('ℹ️ Бот продолжит работу без поиска в таблицах\n');
+                this.logger.warning('MonitorBot', 'Ошибка подключения к Google Sheets, продолжаем без таблиц', { error: error.message });
             }
 
-            // Подписка на сообщения
             this.subscribeToMessages(this.messageHandler);
-
             this.isRunning = true;
+            
+            this.logger.info('MonitorBot', 'Бот запущен и готов к работе');
         } catch (error) {
-            console.error('❌ Произошла ошибка:', error.message);
+            this.logger.error('MonitorBot', 'Критическая ошибка при запуске', { error: error.message });
             process.exit(1);
         }
     }

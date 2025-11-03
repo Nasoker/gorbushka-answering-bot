@@ -2,6 +2,7 @@ import { google } from 'googleapis';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { getLogger } from './LoggerService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -14,7 +15,8 @@ export class GoogleSheetsService {
         this.config = config;
         this.sheets = null;
         this.auth = null;
-        this.resolvedSheetName = null; // Имя листа, полученное по ID
+        this.resolvedSheetName = null;
+        this.logger = getLogger();
     }
 
     /**
@@ -22,17 +24,14 @@ export class GoogleSheetsService {
      */
     async initialize() {
         try {
-            // Проверка наличия файла credentials
             const credentialsPath = path.resolve(this.config.credentialsPath);
 
             if (!fs.existsSync(credentialsPath)) {
                 throw new Error(`Файл credentials.json не найден по пути: ${credentialsPath}`);
             }
 
-            // Чтение credentials
             const credentials = JSON.parse(fs.readFileSync(credentialsPath, 'utf8'));
 
-            // Создание JWT клиента
             this.auth = new google.auth.JWT(
                 credentials.client_email,
                 null,
@@ -40,13 +39,9 @@ export class GoogleSheetsService {
                 ['https://www.googleapis.com/auth/spreadsheets.readonly']
             );
 
-            // Подключение
             await this.auth.authorize();
-
-            // Создание клиента Google Sheets
             this.sheets = google.sheets({ version: 'v4', auth: this.auth });
 
-            // Получение имени листа по ID (если указан sheetGid)
             if (this.config.sheetGid) {
                 this.resolvedSheetName = await this.getSheetNameById(parseInt(this.config.sheetGid));
             } else if (this.config.sheetName) {
@@ -55,9 +50,10 @@ export class GoogleSheetsService {
                 throw new Error('Не указан ни GOOGLE_SHEET_GID, ни GOOGLE_SHEET_NAME');
             }
 
+            this.logger.info('GoogleSheets', 'Подключение к Google Sheets успешно', { sheetName: this.resolvedSheetName });
             return true;
         } catch (error) {
-            console.error('❌ Ошибка инициализации Google Sheets:', error.message);
+            this.logger.error('GoogleSheets', 'Ошибка инициализации Google Sheets', { error: error.message });
             throw error;
         }
     }
@@ -81,7 +77,7 @@ export class GoogleSheetsService {
 
             return sheet.properties.title;
         } catch (error) {
-            console.error(`❌ Ошибка получения имени листа по ID ${sheetId}:`, error.message);
+            this.logger.error('GoogleSheets', 'Ошибка получения имени листа по ID', { sheetId, error: error.message });
             throw error;
         }
     }
@@ -93,18 +89,17 @@ export class GoogleSheetsService {
         try {
             const response = await this.sheets.spreadsheets.values.get({
                 spreadsheetId: this.config.spreadsheetId,
-                range: `${this.resolvedSheetName}!A:Z`, // Читаем все колонки
+                range: `${this.resolvedSheetName}!A:Z`,
             });
 
             const rows = response.data.values;
 
             if (!rows || rows.length === 0) {
-                console.log('⚠️ Таблица пуста');
                 return [];
             }
             return rows;
         } catch (error) {
-            console.error('❌ Ошибка получения данных:', error.message);
+            this.logger.error('GoogleSheets', 'Ошибка получения данных', { error: error.message });
             return [];
         }
     }
@@ -121,7 +116,7 @@ export class GoogleSheetsService {
 
             return response.data.values || [];
         } catch (error) {
-            console.error(`❌ Ошибка получения диапазона ${range}:`, error.message);
+            this.logger.error('GoogleSheets', 'Ошибка получения диапазона', { range, error: error.message });
             return [];
         }
     }
@@ -132,7 +127,7 @@ export class GoogleSheetsService {
     async searchByText(searchText, options = {}) {
         try {
             const {
-                columnIndex = null,  // Поиск в конкретной колонке (null = все колонки)
+                columnIndex = null,
                 caseSensitive = false,
                 exactMatch = false,
             } = options;
@@ -143,17 +138,13 @@ export class GoogleSheetsService {
                 return [];
             }
 
-            // Первая строка - заголовки
             const headers = allData[0];
             const dataRows = allData.slice(1);
-
             const results = [];
             const normalizedSearch = caseSensitive ? searchText : searchText.toLowerCase();
 
             for (let i = 0; i < dataRows.length; i++) {
                 const row = dataRows[i];
-
-                // Определяем колонки для поиска
                 const columnsToSearch = columnIndex !== null ? [columnIndex] : row.map((_, idx) => idx);
 
                 for (const colIdx of columnsToSearch) {
@@ -169,25 +160,24 @@ export class GoogleSheetsService {
                     }
 
                     if (isMatch) {
-                        // Формируем объект с данными
                         const rowData = {};
                         headers.forEach((header, idx) => {
                             rowData[header] = row[idx] || '';
                         });
 
-                        rowData._rowNumber = i + 2; // +2 потому что первая строка - заголовки, и нумерация с 1
+                        rowData._rowNumber = i + 2;
                         rowData._matchedColumn = headers[colIdx];
                         rowData._matchedValue = cellValue;
 
                         results.push(rowData);
-                        break; // Нашли совпадение в этой строке, переходим к следующей
+                        break;
                     }
                 }
             }
 
             return results;
         } catch (error) {
-            console.error('❌ Ошибка поиска:', error.message);
+            this.logger.error('GoogleSheets', 'Ошибка поиска', { searchText, error: error.message });
             return [];
         }
     }
@@ -205,19 +195,16 @@ export class GoogleSheetsService {
 
             const headers = allData[0];
             const dataRows = allData.slice(1);
-
             const results = [];
 
             for (let i = 0; i < dataRows.length; i++) {
                 const row = dataRows[i];
                 let matchesAll = true;
 
-                // Проверяем все критерии
                 for (const [columnName, searchValue] of Object.entries(criteria)) {
                     const columnIndex = headers.indexOf(columnName);
 
                     if (columnIndex === -1) {
-                        console.warn(`⚠️ Колонка "${columnName}" не найдена`);
                         matchesAll = false;
                         break;
                     }
@@ -243,7 +230,7 @@ export class GoogleSheetsService {
 
             return results;
         } catch (error) {
-            console.error('❌ Ошибка поиска по критериям:', error.message);
+            this.logger.error('GoogleSheets', 'Ошибка поиска по критериям', { error: error.message });
             return [];
         }
     }
@@ -267,7 +254,7 @@ export class GoogleSheetsService {
                 })),
             };
         } catch (error) {
-            console.error('❌ Ошибка получения информации о таблице:', error.message);
+            this.logger.error('GoogleSheets', 'Ошибка получения информации о таблице', { error: error.message });
             return null;
         }
     }
@@ -280,7 +267,7 @@ export class GoogleSheetsService {
             const data = await this.getAllData();
             return data.length > 0 ? data[0] : [];
         } catch (error) {
-            console.error('❌ Ошибка получения заголовков:', error.message);
+            this.logger.error('GoogleSheets', 'Ошибка получения заголовков', { error: error.message });
             return [];
         }
     }

@@ -3,6 +3,7 @@ import { StringSession } from 'telegram/sessions/index.js';
 import { NewMessage } from 'telegram/events/index.js';
 import { config } from '../config/config.js';
 import { getUserDatabaseService } from '../services/UserDatabaseService.js';
+import { getLogger } from '../services/LoggerService.js';
 
 /**
  * Базовый класс для Telegram бота
@@ -18,9 +19,10 @@ export class TelegramBot {
         this._heartbeatTimer = null;
         this._pollingTimer = null;
         this._lastPolledMessageId = 0;
-        this._messageHandler = null; // Сохраняем handler для перезапуска polling
-        this._processedMessages = new Set(); // Для дедупликации сообщений
-        this._loggedSkippedMessages = new Set(); // Для предотвращения спама в консоли
+        this._messageHandler = null;
+        this._processedMessages = new Set();
+        this._loggedSkippedMessages = new Set();
+        this.logger = getLogger();
     }
 
     /**
@@ -34,20 +36,16 @@ export class TelegramBot {
             connectionRetries: this.config.client.connectionRetries,
         });
 
-        // Обработчик ошибок соединения
         this.client.on('error', (error) => {
-            console.error(`❌ [TelegramBot] Ошибка соединения:`, error.message);
-            console.error(`❌ [TelegramBot] Stack trace:`, error.stack);
+            this.logger.error('TelegramBot', 'Ошибка соединения', { error: error.message });
         });
 
-        // Обработчик разрыва соединения
         this.client.on('disconnected', () => {
-            console.log(`⚠️ [TelegramBot] Соединение разорвано`);
+            this.logger.warning('TelegramBot', 'Соединение разорвано');
         });
 
-        // Обработчик переподключения
         this.client.on('reconnected', () => {
-            console.log(`✅ [TelegramBot] Соединение восстановлено`);
+            this.logger.info('TelegramBot', 'Соединение восстановлено');
         });
 
         return this.client;
@@ -64,7 +62,7 @@ export class TelegramBot {
             password: callbacks.password || (async () => ''),
             phoneCode: callbacks.phoneCode || (async () => ''),
             onError: (err) => {
-                console.error('❌ Ошибка авторизации:', err);
+                this.logger.error('TelegramBot', 'Ошибка авторизации', { error: err.message });
                 if (callbacks.onError) callbacks.onError(err);
             },
         });
@@ -77,26 +75,15 @@ export class TelegramBot {
      */
     async initializeDatabase() {
         try {
-            console.log('🔄 Инициализация базы данных...');
-            
-            // Инициализируем БД
             await this.userDb.initialize();
-            
-            // Загружаем все чаты в БД
             await this.loadAllChatsToDatabase();
-            
-            // Подписываемся на новые чаты
             this.subscribeToNewChats();
-            
             this.isDbLoaded = true;
-            console.log('✅ База данных инициализирована и загружена');
             
-            // Показываем статистику
             const stats = await this.userDb.getStats();
-            console.log(`📊 Статистика БД: ${stats.users} пользователей, ${stats.chats} чатов`);
-            
+            this.logger.info('TelegramBot', 'БД инициализирована', { users: stats.users, chats: stats.chats });
         } catch (error) {
-            console.error('❌ Ошибка инициализации базы данных:', error.message);
+            this.logger.error('TelegramBot', 'Ошибка инициализации БД', { error: error.message });
             throw error;
         }
     }
@@ -106,26 +93,17 @@ export class TelegramBot {
      */
     async loadAllChatsToDatabase() {
         try {
-            console.log('📋 Загружаем все чаты в базу данных...');
-            
-            // Получаем все чаты
             const dialogs = await this.client.getDialogs({ limit: 2000 });
-            
-            // Фильтруем только личные чаты
             const privateChats = dialogs.filter(dialog => dialog.entity.className === 'User');
             
             let addedCount = 0;
             let updatedCount = 0;
             const totalChats = privateChats.length;
             let processedCount = 0;
-            
-            // Показываем прогресс каждые 50 пользователей
             const progressInterval = Math.max(1, Math.floor(totalChats / 20));
             
             for (const dialog of privateChats) {
                 const chat = dialog.entity;
-                
-                // Проверяем, есть ли уже такой чат в БД
                 const existingChat = await this.userDb.findUserById(chat.id);
                 
                 if (existingChat) {
@@ -134,7 +112,6 @@ export class TelegramBot {
                     addedCount++;
                 }
                 
-                // Добавляем/обновляем пользователя
                 await this.userDb.upsertUser({
                     id: chat.id,
                     username: chat.username,
@@ -147,7 +124,6 @@ export class TelegramBot {
                     chatType: chat.className
                 });
                 
-                // Добавляем/обновляем чат
                 await this.userDb.upsertChat({
                     id: chat.id,
                     title: `${chat.firstName || ''} ${chat.lastName || ''}`.trim() || chat.username || 'Личный чат',
@@ -157,20 +133,16 @@ export class TelegramBot {
                 
                 processedCount++;
                 
-                // Показываем прогресс
                 if (processedCount % progressInterval === 0 || processedCount === totalChats) {
                     const percentage = Math.round((processedCount / totalChats) * 100);
                     process.stdout.write(`\r📋 Загрузка: ${processedCount}/${totalChats} (${percentage}%)`);
                 }
             }
             
-            // Переходим на новую строку после прогресс-бара
             console.log('');
-            
-            console.log(`✅ Загрузка завершена: ${addedCount} новых, ${updatedCount} обновленных`);
-            
+            this.logger.info('TelegramBot', 'Чаты загружены в БД', { added: addedCount, updated: updatedCount });
         } catch (error) {
-            console.error('❌ Ошибка загрузки чатов в БД:', error.message);
+            this.logger.error('TelegramBot', 'Ошибка загрузки чатов в БД', { error: error.message });
             throw error;
         }
     }
@@ -180,36 +152,24 @@ export class TelegramBot {
      */
     subscribeToNewChats() {
         try {
-            // Создаем обертку для обработчика новых чатов с логированием ошибок
             const wrappedNewChatHandler = async (event) => {
                 try {
-                    console.log(`🆕 [TelegramBot] Обнаружен новый чат`);
                     await this.handleNewChat(event);
-                    console.log(`✅ [TelegramBot] Новый чат обработан успешно`);
                 } catch (error) {
-                    console.error(`❌ [TelegramBot] Ошибка при обработке нового чата:`, error.message);
-                    console.error(`❌ [TelegramBot] Stack trace:`, error.stack);
-                    console.error(`❌ [TelegramBot] Event details:`, {
-                        chatId: event.chat?.id,
-                        chatType: event.chat?.className,
-                        senderId: event.sender?.id
-                    });
+                    this.logger.error('TelegramBot', 'Ошибка обработки нового чата', { error: error.message });
                 }
             };
 
-            // Подписываемся на все новые сообщения для обнаружения новых чатов
             this.client.addEventHandler(wrappedNewChatHandler, new NewMessage({
                 func: (event) => {
-                    // Проверяем, что это новый чат (личный)
                     const chat = event.chat;
                     return chat && chat.className === 'User';
                 }
             }));
             
-            console.log('👂 Подписка на новые чаты активирована');
+            this.logger.info('TelegramBot', 'Подписка на новые чаты активирована');
         } catch (error) {
-            console.error('❌ [TelegramBot] Ошибка подписки на новые чаты:', error.message);
-            console.error('❌ [TelegramBot] Stack trace:', error.stack);
+            this.logger.error('TelegramBot', 'Ошибка подписки на новые чаты', { error: error.message });
         }
     }
 
@@ -225,13 +185,9 @@ export class TelegramBot {
                 return;
             }
             
-            // Проверяем, есть ли уже такой пользователь в БД
             const existingUser = await this.userDb.findUserById(chat.id);
             
             if (!existingUser) {
-                console.log(`🆕 Обнаружен новый чат с пользователем: ${sender.username || sender.firstName}`);
-                
-                // Добавляем нового пользователя в БД
                 await this.userDb.upsertUser({
                     id: chat.id,
                     username: chat.username,
@@ -244,7 +200,6 @@ export class TelegramBot {
                     chatType: chat.className
                 });
                 
-                // Добавляем новый чат в БД
                 await this.userDb.upsertChat({
                     id: chat.id,
                     title: `${chat.firstName || ''} ${chat.lastName || ''}`.trim() || chat.username || 'Личный чат',
@@ -252,11 +207,10 @@ export class TelegramBot {
                     username: chat.username
                 });
                 
-                console.log(`✅ Новый пользователь ${sender.username || sender.firstName} добавлен в БД`);
+                this.logger.info('TelegramBot', 'Новый пользователь добавлен', { username: sender.username || sender.firstName });
             }
-            
         } catch (error) {
-            console.error('❌ Ошибка обработки нового чата:', error.message);
+            this.logger.error('TelegramBot', 'Ошибка обработки нового чата', { error: error.message });
         }
     }
 
@@ -282,52 +236,24 @@ export class TelegramBot {
      */
     subscribeToMessages(handler) {
         const { chatId } = this.config.group;
-
-        // Сохраняем handler для возможности перезапуска
         this._messageHandler = handler;
-
-        // Используем ТОЛЬКО polling для получения сообщений
         this._startPolling(handler, chatId);
-        console.log(`✅ [TelegramBot] Подписка на сообщения через polling: ${chatId}`);
-
-        // Polling уже запущен как основной канал
-
-        // Запускаем heartbeat, если еще не запущен
         this._ensureHeartbeat();
+        this.logger.info('TelegramBot', 'Подписка на сообщения активирована', { chatId });
     }
 
-    // Тестирование подписки на сообщения
     async _testMessageSubscription(chatId) {
         try {
-            console.log(`🔍 [TelegramBot] Тестируем подписку на группу ${chatId}...`);
-            
-            // Проверяем, можем ли мы получить информацию о чате
             const chat = await this.client.getEntity(chatId);
-            console.log(`✅ [TelegramBot] Чат найден: ${chat.title || chatId}`);
-            
-            // Проверяем последние сообщения
             const messages = await this.client.getMessages(chatId, { limit: 1 });
-            if (messages.length > 0) {
-                const lastMsg = messages[0];
-                console.log(`📨 [TelegramBot] Последнее сообщение: "${lastMsg.text?.substring(0, 50)}..." от ${lastMsg.senderId}`);
-            } else {
-                console.log(`⚠️ [TelegramBot] Нет сообщений в чате`);
-            }
-            
-            // Polling работает постоянно, переподписка не требуется
-            console.log(`✅ [TelegramBot] Проверка polling завершена`);
-            
+            this.logger.info('TelegramBot', 'Проверка подписки завершена', { chatTitle: chat.title || chatId });
         } catch (error) {
-            console.error(`❌ [TelegramBot] Ошибка тестирования подписки:`, error.message);
-            console.error(`❌ [TelegramBot] Stack trace:`, error.stack);
+            this.logger.error('TelegramBot', 'Ошибка тестирования подписки', { error: error.message });
         }
     }
 
-    // Альтернативный способ получения сообщений через polling
     _startPolling(handler, chatId) {
         if (this._pollingTimer) return;
-        
-        console.log(`🔄 [TelegramBot] Запускаем polling сообщений для группы ${chatId}`);
         
         this._pollingTimer = setInterval(async () => {
             try {
@@ -335,110 +261,71 @@ export class TelegramBot {
                 
                 for (const message of messages) {
                     if (message.id > this._lastPolledMessageId) {
-                        // Дедупликация сообщений (атомарная проверка для защиты от race condition)
                         const sizeBefore = this._processedMessages.size;
                         this._processedMessages.add(message.id);
                         
-                        // Если размер не изменился - сообщение уже было обработано
                         if (sizeBefore === this._processedMessages.size) {
-                            // Логируем только один раз для каждого сообщения, чтобы не спамить консоль
-                            if (!this._loggedSkippedMessages.has(message.id)) {
-                                console.log(`🔄 [Polling] Сообщение ${message.id} уже обработано, пропускаем`);
-                                this._loggedSkippedMessages.add(message.id);
-                                
-                                // Очищаем старые записи (оставляем только последние 100)
-                                if (this._loggedSkippedMessages.size > 100) {
-                                    const toDelete = Array.from(this._loggedSkippedMessages).slice(0, 50);
-                                    toDelete.forEach(id => this._loggedSkippedMessages.delete(id));
-                                }
-                            }
                             continue;
                         }
                         
-                        // Обновляем только если сообщение НЕ было обработано
                         this._lastPolledMessageId = message.id;
                         this.lastMessageAt = Date.now();
                         
-                        console.log(`📨 [Polling] Получено сообщение: "${message.text?.substring(0, 50)}..." в ${new Date().toLocaleTimeString()}`);
-                        
-                        // Создаем событие в том же формате, что ожидает обработчик
                         const event = {
                             message: message,
                             chat: await this.client.getEntity(chatId),
                             sender: message.sender
                         };
                         
-                        // Вызываем обработчик
                         Promise.resolve()
                             .then(() => handler(event))
-                            .then(() => {
-                                console.log(`✅ [Polling] Сообщение обработано успешно`);
-                            })
                             .catch((error) => {
-                                console.error(`❌ [Polling] Ошибка обработки:`, error.message);
+                                this.logger.error('TelegramBot', 'Ошибка обработки сообщения из polling', { error: error.message });
                             });
                     }
                 }
             } catch (error) {
-                console.error(`❌ [Polling] Ошибка получения сообщений:`, error.message);
+                this.logger.error('TelegramBot', 'Ошибка получения сообщений через polling', { error: error.message });
             }
-        }, 10000); // Проверяем каждые 10 секунд
+        }, 10000);
     }
 
-    // Heartbeat: следим, что слушатель живой, при необходимости переподключаемся
     _ensureHeartbeat() {
         if (this._heartbeatTimer) return;
-        const warnSilenceMs = 3 * 60 * 1000; // 3 минуты без сообщений — предупреждение
-        const intervalMs = 30 * 1000; // проверка каждые 30 секунд (чаще)
+        const warnSilenceMs = 3 * 60 * 1000;
+        const intervalMs = 30 * 1000;
+        
         this._heartbeatTimer = setInterval(async () => {
             try {
                 const now = Date.now();
                 const silence = this.lastMessageAt ? (now - this.lastMessageAt) : null;
-                
-                // Более детальная диагностика
-                console.log(`💓 [Heartbeat] Клиент=${this.client?.connected ? 'connected' : 'disconnected'} silenceMs=${silence ?? 'n/a'} lastMsg=${this.lastMessageAt ? new Date(this.lastMessageAt).toLocaleTimeString() : 'never'}`);
 
-                // Проверяем состояние клиента
                 if (!this.client) {
-                    console.error('❌ [Heartbeat] Клиент не инициализирован!');
+                    this.logger.error('TelegramBot', 'Клиент не инициализирован в heartbeat');
                     return;
                 }
 
                 if (!this.client.connected) {
-                    console.warn('⚠️ [Heartbeat] Клиент отключен, пытаюсь переподключиться...');
+                    this.logger.warning('TelegramBot', 'Клиент отключен, переподключаемся');
                     try {
                         await this.client.connect();
-                        console.log('✅ [Heartbeat] Переподключение успешно');
-                        
-                        // Polling продолжит работу автоматически после переподключения
-                        console.log('✅ [Heartbeat] Переподключение завершено, polling активен');
+                        this.logger.info('TelegramBot', 'Переподключение успешно');
                     } catch (err) {
-                        console.error('❌ [Heartbeat] Ошибка переподключения:', err.message);
+                        this.logger.error('TelegramBot', 'Ошибка переподключения', { error: err.message });
                     }
                 }
 
                 if (silence != null && silence > warnSilenceMs) {
-                    console.warn(`⚠️ [Heartbeat] Нет входящих сообщений ${Math.round(silence/1000)} сек. Проверьте доступность слушателя/фильтры.`);
-                    
-                    // Попробуем принудительно проверить соединение
-                    try {
-                        const me = await this.client.getMe();
-                        console.log(`🔍 [Heartbeat] Проверка соединения: я ${me.username || me.firstName}`);
-                    } catch (err) {
-                        console.error('❌ [Heartbeat] Ошибка проверки соединения:', err.message);
-                    }
-                } else if (silence != null && silence < 5000) {
-                    // Сообщения приходят регулярно — оставляем polling активным как основной канал
+                    this.logger.warning('TelegramBot', `Нет сообщений ${Math.round(silence/1000)} сек`);
                 }
 
-                // Гарантируем, что polling запущен
                 if (!this._pollingTimer && this._messageHandler) {
                     const { chatId } = this.config.group;
-                    console.log('🔄 [Heartbeat] Polling не активен, запускаем...');
+                    this.logger.warning('TelegramBot', 'Polling не активен, перезапускаем');
                     this._startPolling(this._messageHandler, chatId);
                 }
             } catch (e) {
-                console.error('❌ [Heartbeat] Ошибка в heartbeat:', e.message);
+                this.logger.error('TelegramBot', 'Ошибка в heartbeat', { error: e.message });
             }
         }, intervalMs);
     }
@@ -456,7 +343,7 @@ export class TelegramBot {
                 lastName: me.lastName,
             };
         } catch (error) {
-            console.error('❌ Не удалось получить информацию о пользователе:', error.message);
+            this.logger.error('TelegramBot', 'Не удалось получить информацию о пользователе', { error: error.message });
             return null;
         }
     }
@@ -468,14 +355,12 @@ export class TelegramBot {
      */
     async sendPrivateMessage(userId, messageText) {
         try {
-            console.log(`📤 [TelegramBot] Отправляем сообщение пользователю ${userId}: "${messageText.substring(0, 50)}..."`);
             await this.client.sendMessage(userId, { 
                 message: messageText 
             });
-            console.log(`✅ [TelegramBot] Сообщение отправлено успешно пользователю ${userId}`);
+            this.logger.info('TelegramBot', 'Сообщение отправлено пользователю', { userId });
         } catch (error) {
-            console.error(`❌ [TelegramBot] Ошибка отправки личного сообщения пользователю ${userId}:`, error.message);
-            console.error(`❌ [TelegramBot] Stack trace:`, error.stack);
+            this.logger.error('TelegramBot', 'Ошибка отправки сообщения', { userId, error: error.message });
         }
     }
 
@@ -489,21 +374,12 @@ export class TelegramBot {
      * @returns {Object|null} - Информация о пользователе и чате, где он найден, или null
      */
     async findUserInAllChats(userIdOrUsername, options = {}) {
-        const {
-            useDatabase = true,
-            fallbackToTelegram = false
-        } = options;
+        const { useDatabase = true, fallbackToTelegram = false } = options;
 
         try {
-            // Убираем избыточное логирование поиска
-            // console.log(`🔍 Поиск пользователя ${userIdOrUsername} в личных чатах...`);
-            
-            // Определяем тип поиска (по ID или по username)
             const isUsernameSearch = typeof userIdOrUsername === 'string' && !userIdOrUsername.match(/^\d+$/);
-            
             let userData = null;
             
-            // Сначала ищем в БД, если она загружена
             if (useDatabase && this.isDbLoaded) {
                 if (isUsernameSearch) {
                     userData = await this.userDb.findUserByUsername(userIdOrUsername);
@@ -512,9 +388,6 @@ export class TelegramBot {
                 }
                 
                 if (userData) {
-                    // Убираем избыточное логирование найденных пользователей
-                    // console.log(`✅ Пользователь найден в БД: ${userData.username || userData.first_name || userData.id}`);
-                    
                     return {
                         user: {
                             id: userData.id,
@@ -534,11 +407,9 @@ export class TelegramBot {
                 }
             }
             
-            console.log(`❌ Пользователь ${userIdOrUsername} не найден`);
             return null;
-            
         } catch (error) {
-            console.error('❌ Ошибка поиска пользователя:', error.message);
+            this.logger.error('TelegramBot', 'Ошибка поиска пользователя', { userIdOrUsername, error: error.message });
             return null;
         }
     }
@@ -552,14 +423,13 @@ export class TelegramBot {
      */
     async sendReplyMessage(username, messageText, replyToMessageId, chatId = null) {
         try {
-            // Если chatId не указан, ищем пользователя в личных чатах
             if (!chatId) {
                 const userResult = await this.findUserInAllChats(username, {
                     onlyPrivateChats: true
                 });
                 
                 if (!userResult) {
-                    console.error(`❌ Пользователь @${username} не найден в личных чатах`);
+                    this.logger.warning('TelegramBot', 'Пользователь не найден для reply', { username });
                     return false;
                 }
                 
@@ -571,10 +441,10 @@ export class TelegramBot {
                 replyTo: replyToMessageId
             });
             
-            console.log(`✅ Reply сообщение отправлено пользователю @${username}`);
+            this.logger.info('TelegramBot', 'Reply сообщение отправлено', { username });
             return true;
         } catch (error) {
-            console.error(`❌ Ошибка отправки reply сообщения пользователю @${username}:`, error.message);
+            this.logger.error('TelegramBot', 'Ошибка отправки reply сообщения', { username, error: error.message });
             return false;
         }
     }
@@ -593,10 +463,10 @@ export class TelegramBot {
                 replyTo: replyToMessageId
             });
             
-            console.log(`✅ Reply сообщение отправлено в группу для @${username}`);
+            this.logger.info('TelegramBot', 'Reply в группу отправлено', { username, groupChatId });
             return true;
         } catch (error) {
-            console.error(`❌ Ошибка отправки reply сообщения в группу для @${username}:`, error.message);
+            this.logger.error('TelegramBot', 'Ошибка отправки reply в группу', { username, error: error.message });
             return false;
         }
     }
@@ -608,28 +478,23 @@ export class TelegramBot {
      */
     async sendPrivateMessageByUsername(username, messageText) {
         try {
-            console.log(`📤 [TelegramBot] Отправляем сообщение пользователю @${username}: "${messageText.substring(0, 50)}..."`);
-            
-            // Ищем пользователя в личных чатах
             const userResult = await this.findUserInAllChats(username, {
                 onlyPrivateChats: true
             });
             
             if (!userResult) {
-                console.error(`❌ [TelegramBot] Пользователь @${username} не найден в личных чатах`);
+                this.logger.warning('TelegramBot', 'Пользователь не найден', { username });
                 return false;
             }
 
-            console.log(`✅ [TelegramBot] Пользователь @${username} найден, отправляем сообщение`);
             await this.client.sendMessage(userResult.user.id, {
                 message: messageText
             });
             
-            console.log(`✅ [TelegramBot] Личное сообщение отправлено пользователю @${username}`);
+            this.logger.info('TelegramBot', 'Сообщение отправлено по username', { username });
             return true;
         } catch (error) {
-            console.error(`❌ [TelegramBot] Ошибка отправки личного сообщения пользователю @${username}:`, error.message);
-            console.error(`❌ [TelegramBot] Stack trace:`, error.stack);
+            this.logger.error('TelegramBot', 'Ошибка отправки сообщения по username', { username, error: error.message });
             return false;
         }
     }
@@ -647,10 +512,10 @@ export class TelegramBot {
                 fromPeer: fromChatId
             });
             
-            console.log(`✅ Сообщение переслано пользователю ${userId}`);
+            this.logger.info('TelegramBot', 'Сообщение переслано пользователю', { userId });
             return true;
         } catch (error) {
-            console.error(`❌ Ошибка пересылки сообщения пользователю @${username}:`, error.message);
+            this.logger.error('TelegramBot', 'Ошибка пересылки сообщения', { userId, error: error.message });
             return false;
         }
     }
@@ -668,10 +533,10 @@ export class TelegramBot {
                 fromPeer: fromChatId
             });
             
-            console.log(`✅ Сообщение переслано в группу ${toGroupChatId}`);
+            this.logger.info('TelegramBot', 'Сообщение переслано в группу', { toGroupChatId });
             return true;
         } catch (error) {
-            console.error(`❌ Ошибка пересылки сообщения в группу:`, error.message);
+            this.logger.error('TelegramBot', 'Ошибка пересылки в группу', { error: error.message });
             return false;
         }
     }

@@ -1,3 +1,5 @@
+import { getLogger } from './LoggerService.js';
+
 /**
  * Сервис для работы с AIML API
  */
@@ -5,6 +7,7 @@ export class AimlApiService {
     constructor(config) {
         this.apiKey = config.apiKey;
         this.baseUrl = config.baseUrl;
+        this.logger = getLogger();
         
         if (!this.apiKey) {
             throw new Error('AIMLAPI_KEY не установлен в .env файле');
@@ -160,18 +163,15 @@ export class AimlApiService {
             const data = await response.json();
             let responseText = data.choices?.[0]?.message?.content || '';
             
-            // Проверяем на подозрительные ответы (повторяющиеся символы или фразы)
             if (responseText.length > 200) {
-                // Проверяем на повторяющиеся символы
                 if (/^(.)\1{50,}$/.test(responseText)) {
-                    console.error(`❌ Подозрительный ответ от API: повторяющиеся символы "${responseText[0]}"`);
+                    this.logger.error('AimlApiService', 'Подозрительный ответ: повторяющиеся символы');
                     return {
                         success: false,
                         error: `API вернул некорректный ответ: повторяющиеся символы`
                     };
                 }
                 
-                // Проверяем на повторяющиеся фразы (более 5 повторений подряд)
                 const lines = responseText.split('\n');
                 let repeatCount = 0;
                 let lastLine = '';
@@ -179,7 +179,7 @@ export class AimlApiService {
                     if (line.trim() === lastLine && line.trim() !== '') {
                         repeatCount++;
                         if (repeatCount > 5) {
-                            console.error(`❌ Подозрительный ответ от API: повторяющиеся фразы "${line.trim()}"`);
+                            this.logger.error('AimlApiService', 'Подозрительный ответ: повторяющиеся фразы');
                             return {
                                 success: false,
                                 error: `API вернул некорректный ответ: повторяющиеся фразы`
@@ -209,28 +209,24 @@ export class AimlApiService {
             
             responseText = responseText.trim();
             
-            // Пытаемся распарсить JSON ответ
             let parsedProducts = null;
             try {
                 parsedProducts = JSON.parse(responseText);
             } catch (e) {
-                console.error('❌ Ошибка парсинга JSON:', e.message);
-                console.error('📄 Проблемный JSON:', responseText);
-                console.error('📏 Длина ответа:', responseText.length);
+                this.logger.error('AimlApiService', 'Ошибка парсинга JSON', { 
+                    error: e.message,
+                    responseLength: responseText.length 
+                });
                 
-                // Попробуем найти и исправить обрезанный JSON
                 if (responseText.includes('"original"') && !responseText.endsWith(']')) {
-                    console.log('🔧 Попытка исправления обрезанного JSON...');
-                    
-                    // Ищем последний полный объект
                     const lastCompleteObject = responseText.lastIndexOf('}');
                     if (lastCompleteObject > 0) {
                         const fixedJson = responseText.substring(0, lastCompleteObject + 1) + ']';
                         try {
                             parsedProducts = JSON.parse(fixedJson);
-                            console.log('✅ JSON исправлен успешно');
+                            this.logger.info('AimlApiService', 'JSON исправлен успешно');
                         } catch (e2) {
-                            console.error('❌ Не удалось исправить JSON:', e2.message);
+                            this.logger.error('AimlApiService', 'Не удалось исправить JSON', { error: e2.message });
                         }
                     }
                 }
@@ -244,7 +240,7 @@ export class AimlApiService {
                 usage: data.usage
             };
         } catch (error) {
-            console.error('❌ Ошибка при обращении к AIML API:', error.message);
+            this.logger.error('AimlApiService', 'Ошибка при обращении к AIML API', { error: error.message });
             return {
                 success: false,
                 error: error.message

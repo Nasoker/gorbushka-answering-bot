@@ -6,4 +6,5 @@ node_modules/
 
 credentials.json
 data/users.db
+logs/
 
