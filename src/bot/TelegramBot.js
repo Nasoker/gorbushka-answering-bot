@@ -232,14 +232,45 @@ export class TelegramBot {
     }
 
     /**
-     * Подписка на новые сообщения
+     * Подписка на новые сообщения (двойной слушатель)
      */
     subscribeToMessages(handler) {
         const { chatId } = this.config.group;
         this._messageHandler = handler;
+
+        // 1. Основной слушатель через addEventHandler
+        const wrappedHandler = async (event) => {
+            try {
+                const message = event.message;
+                this._lastPolledMessageId = Math.max(this._lastPolledMessageId, message.id);
+                
+                // Дедупликация
+                const sizeBefore = this._processedMessages.size;
+                this._processedMessages.add(message.id);
+                if (sizeBefore === this._processedMessages.size) {
+                    return; // Уже обработано
+                }
+                
+                this.lastMessageAt = Date.now();
+                this.logger.info('TelegramBot', 'Сообщение получено (EventHandler)', { msgId: message.id });
+                
+                await handler(event);
+            } catch (error) {
+                this.logger.error('TelegramBot', 'Ошибка в EventHandler', { error: error.message });
+            }
+        };
+
+        this.client.addEventHandler(wrappedHandler, new NewMessage({
+            chats: [chatId]
+        }));
+        
+        this.logger.info('TelegramBot', 'Основной слушатель активирован (EventHandler)', { chatId });
+
+        // 2. Резервный слушатель через polling
         this._startPolling(handler, chatId);
+
+        // 3. Heartbeat для мониторинга
         this._ensureHeartbeat();
-        this.logger.info('TelegramBot', 'Подписка на сообщения активирована', { chatId });
     }
 
     async _testMessageSubscription(chatId) {
@@ -255,6 +286,8 @@ export class TelegramBot {
     _startPolling(handler, chatId) {
         if (this._pollingTimer) return;
         
+        this.logger.info('TelegramBot', 'Резервный слушатель активирован (Polling)', { chatId });
+        
         this._pollingTimer = setInterval(async () => {
             try {
                 const messages = await this.client.getMessages(chatId, { limit: 5 });
@@ -265,11 +298,13 @@ export class TelegramBot {
                         this._processedMessages.add(message.id);
                         
                         if (sizeBefore === this._processedMessages.size) {
-                            continue;
+                            continue; // Уже обработано (скорее всего через EventHandler)
                         }
                         
                         this._lastPolledMessageId = message.id;
                         this.lastMessageAt = Date.now();
+                        
+                        this.logger.info('TelegramBot', 'Сообщение получено (Polling)', { msgId: message.id });
                         
                         const event = {
                             message: message,
@@ -280,12 +315,12 @@ export class TelegramBot {
                         Promise.resolve()
                             .then(() => handler(event))
                             .catch((error) => {
-                                this.logger.error('TelegramBot', 'Ошибка обработки сообщения из polling', { error: error.message });
+                                this.logger.error('TelegramBot', 'Ошибка в Polling обработчике', { error: error.message });
                             });
                     }
                 }
             } catch (error) {
-                this.logger.error('TelegramBot', 'Ошибка получения сообщений через polling', { error: error.message });
+                this.logger.error('TelegramBot', 'Ошибка получения сообщений через Polling', { error: error.message });
             }
         }, 10000);
     }
@@ -293,7 +328,7 @@ export class TelegramBot {
     _ensureHeartbeat() {
         if (this._heartbeatTimer) return;
         const warnSilenceMs = 3 * 60 * 1000;
-        const intervalMs = 30 * 1000;
+        const intervalMs = 60 * 1000; // Проверка каждую минуту
         
         this._heartbeatTimer = setInterval(async () => {
             try {
