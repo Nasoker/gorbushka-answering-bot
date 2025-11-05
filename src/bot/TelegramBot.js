@@ -242,7 +242,6 @@ export class TelegramBot {
         const wrappedHandler = async (event) => {
             try {
                 const message = event.message;
-                this._lastPolledMessageId = Math.max(this._lastPolledMessageId, message.id);
                 
                 // Дедупликация
                 const sizeBefore = this._processedMessages.size;
@@ -393,7 +392,6 @@ export class TelegramBot {
             await this.client.sendMessage(userId, { 
                 message: messageText 
             });
-            this.logger.info('TelegramBot', 'Сообщение отправлено пользователю', { userId });
         } catch (error) {
             this.logger.error('TelegramBot', 'Ошибка отправки сообщения', { userId, error: error.message });
         }

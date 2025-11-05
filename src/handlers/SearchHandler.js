@@ -75,7 +75,19 @@ export class SearchHandler {
                 }
 
                 this.logger.info('SearchHandler', 'Поиск цен начат', { productsCount: response.products.length }, messageId);
-                const productsWithPrices = await this.searchProductsWithPrices(response.products, messageId);
+                
+                let productsWithPrices;
+                try {
+                    productsWithPrices = await this.searchProductsWithPrices(response.products, messageId);
+                } catch (error) {
+                    // Ошибка при работе с Google Sheets (например, quota exceeded)
+                    this.logger.error('SearchHandler', 'Ошибка поиска цен в Google Sheets', { 
+                        error: error.message,
+                        isQuotaError: error.message?.includes('Quota exceeded')
+                    }, messageId);
+                    // НЕ отправляем сообщение пользователю при ошибке
+                    return;
+                }
                 
                 const productsWithValidPrices = productsWithPrices.products.filter(p => p.price != null);
                 this.logger.info('SearchHandler', 'Поиск цен завершен', { foundCount: productsWithValidPrices.length }, messageId);
@@ -123,8 +135,15 @@ export class SearchHandler {
             notFound: []
         };
 
-        const headers = await this.sheetsService.getHeaders();
-        const priceColumnName = headers[1];
+        // Получаем заголовки таблицы (может выбросить ошибку квоты)
+        let headers, priceColumnName;
+        try {
+            headers = await this.sheetsService.getHeaders();
+            priceColumnName = headers[1];
+        } catch (error) {
+            // Пробрасываем ошибку наверх (будет обработана в handleMessage)
+            throw error;
+        }
 
         for (let i = 0; i < products.length; i++) {
             const product = products[i];
@@ -184,6 +203,12 @@ export class SearchHandler {
                     });
                 }
             } catch (error) {
+                // Если это ошибка квоты - пробрасываем наверх
+                if (error.message?.includes('Quota exceeded')) {
+                    throw error;
+                }
+                
+                // Для других ошибок - логируем и продолжаем
                 this.logger.error('SearchHandler', 'Ошибка поиска товара', { 
                     product: normalizedName, 
                     error: error.message 
