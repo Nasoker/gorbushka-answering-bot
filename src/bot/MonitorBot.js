@@ -63,6 +63,7 @@ export class MonitorBot extends TelegramBot {
             // Инициализация базы данных
             try {
                 await this.initializeDatabase();
+                this.startDailyChatReload();
             } catch (error) {
                 this.logger.warning('MonitorBot', 'Ошибка инициализации БД, продолжаем без БД', { error: error.message });
             }

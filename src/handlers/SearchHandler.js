@@ -52,8 +52,8 @@ export class SearchHandler {
             const userResult = await this.bot.findUserInAllChats(senderId);
             
             if (!userResult) {
-                this.logger.warning('SearchHandler', 'Пользователь не найден, пересылаем админу', { senderId }, messageId);
-                await this.bot.forwardMessageToUser(193853539, message, this.config.group.chatId);
+                this.logger.warning('SearchHandler', 'Пользователь не найден', { senderId }, messageId);
+                // await this.bot.forwardMessageToUser(193853539, message, this.config.group.chatId);
                 return;
             }
             

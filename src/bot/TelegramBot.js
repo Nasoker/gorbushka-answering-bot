@@ -22,6 +22,7 @@ export class TelegramBot {
         this._messageHandler = null;
         this._processedMessages = new Set();
         this._loggedSkippedMessages = new Set();
+        this._dailyChatReloadTimer = null;
         this.logger = getLogger();
     }
 
@@ -77,7 +78,6 @@ export class TelegramBot {
         try {
             await this.userDb.initialize();
             await this.loadAllChatsToDatabase();
-            this.subscribeToNewChats();
             this.isDbLoaded = true;
             
             const stats = await this.userDb.getStats();
@@ -148,69 +148,58 @@ export class TelegramBot {
     }
 
     /**
-     * Подписка на новые чаты
+     * Запуск ежедневной синхронизации чатов
      */
-    subscribeToNewChats() {
-        try {
-            const wrappedNewChatHandler = async (event) => {
-                try {
-                    await this.handleNewChat(event);
-                } catch (error) {
-                    this.logger.error('TelegramBot', 'Ошибка обработки нового чата', { error: error.message });
-                }
-            };
-
-            this.client.addEventHandler(wrappedNewChatHandler, new NewMessage({
-                func: (event) => {
-                    const chat = event.chat;
-                    return chat && chat.className === 'User';
-                }
-            }));
-            
-            this.logger.info('TelegramBot', 'Подписка на новые чаты активирована');
-        } catch (error) {
-            this.logger.error('TelegramBot', 'Ошибка подписки на новые чаты', { error: error.message });
+    startDailyChatReload() {
+        if (this._dailyChatReloadTimer) {
+            clearTimeout(this._dailyChatReloadTimer);
+            this._dailyChatReloadTimer = null;
         }
+        this._scheduleDailyChatReload();
     }
 
     /**
-     * Обработчик новых чатов
+     * Планирование ежедневной синхронизации чатов
      */
-    async handleNewChat(event) {
+    _scheduleDailyChatReload() {
+        const delay = Math.max(this._getMsUntilNextMoscowMidnight(), 60 * 1000);
+        this.logger.info('TelegramBot', 'Планируем ежедневную синхронизацию чатов', { delayMs: delay });
+
+        this._dailyChatReloadTimer = setTimeout(async () => {
+            await this._performDailyChatReload();
+            this._scheduleDailyChatReload();
+        }, delay);
+    }
+
+    /**
+     * Получение времени до следующей полночи в Москве
+     */
+    _getMsUntilNextMoscowMidnight() {
+        const now = new Date();
+        const moscowOffsetMs = 3 * 60 * 60 * 1000;
+        const nowMoscowMs = now.getTime() + moscowOffsetMs;
+        const nowMoscow = new Date(nowMoscowMs);
+
+        const nextMidnightMoscow = Date.UTC(
+            nowMoscow.getUTCFullYear(),
+            nowMoscow.getUTCMonth(),
+            nowMoscow.getUTCDate() + 1,
+            0, 0, 0, 0
+        );
+
+        return nextMidnightMoscow - nowMoscowMs;
+    }
+
+    /**
+     * Выполнение ежедневной синхронизации чатов
+     */
+    async _performDailyChatReload() {
+        this.logger.info('TelegramBot', 'Ежедневная синхронизация чатов начата');
         try {
-            const chat = event.chat;
-            const sender = event.sender;
-            
-            if (!chat || chat.className !== 'User') {
-                return;
-            }
-            
-            const existingUser = await this.userDb.findUserById(chat.id);
-            
-            if (!existingUser) {
-                await this.userDb.upsertUser({
-                    id: chat.id,
-                    username: chat.username,
-                    firstName: chat.firstName,
-                    lastName: chat.lastName,
-                    phone: chat.phone,
-                    bot: chat.bot,
-                    chatId: chat.id,
-                    chatTitle: `${chat.firstName || ''} ${chat.lastName || ''}`.trim() || chat.username || 'Личный чат',
-                    chatType: chat.className
-                });
-                
-                await this.userDb.upsertChat({
-                    id: chat.id,
-                    title: `${chat.firstName || ''} ${chat.lastName || ''}`.trim() || chat.username || 'Личный чат',
-                    type: chat.className,
-                    username: chat.username
-                });
-                
-                this.logger.info('TelegramBot', 'Новый пользователь добавлен', { username: sender.username || sender.firstName });
-            }
+            await this.loadAllChatsToDatabase();
+            this.logger.info('TelegramBot', 'Ежедневная синхронизация чатов завершена');
         } catch (error) {
-            this.logger.error('TelegramBot', 'Ошибка обработки нового чата', { error: error.message });
+            this.logger.error('TelegramBot', 'Ошибка ежедневной синхронизации чатов', { error: error.message });
         }
     }
 
@@ -581,6 +570,11 @@ export class TelegramBot {
         if (this.client) {
             await this.client.disconnect();
             this.isRunning = false;
+        }
+        
+        if (this._dailyChatReloadTimer) {
+            clearTimeout(this._dailyChatReloadTimer);
+            this._dailyChatReloadTimer = null;
         }
         
         // Закрываем соединение с БД
