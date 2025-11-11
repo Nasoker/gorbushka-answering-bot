@@ -266,7 +266,7 @@ export class SearchHandler {
             }
             
             if (product && product.found && product.price && product.price !== 'нет цены' && product.price.trim() !== '') {
-                resultLines.push(`${trimmedLine} = ${product.price}`);
+                resultLines.push(`${trimmedLine} ${product.price}`);
             } else {
                 resultLines.push(trimmedLine);
             }
